@@ -1,5 +1,4 @@
 import pytest
-from pathlib import Path
 from blog_validate.config import load_config
 
 

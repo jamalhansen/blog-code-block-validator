@@ -1,5 +1,10 @@
-import pytest
-from blog_validate.extractor import parse_annotation, extract_blocks, scan_posts, build_fixture_registry, PostBlocks
+from blog_validate.extractor import (
+    parse_annotation,
+    extract_blocks,
+    scan_posts,
+    build_fixture_registry,
+    PostBlocks,
+)
 from blog_validate.languages.base import AnnotationType
 
 
@@ -8,22 +13,34 @@ class TestParseAnnotation:
         assert parse_annotation("<!-- test:skip -->") == (AnnotationType.SKIP, None)
 
     def test_parses_expected_failure(self):
-        assert parse_annotation("<!-- test:expected-failure -->") == (AnnotationType.EXPECTED_FAILURE, None)
+        assert parse_annotation("<!-- test:expected-failure -->") == (
+            AnnotationType.EXPECTED_FAILURE,
+            None,
+        )
 
     def test_parses_setup(self):
         assert parse_annotation("<!-- test:setup -->") == (AnnotationType.SETUP, None)
 
     def test_parses_syntax_only(self):
-        assert parse_annotation("<!-- test:syntax-only -->") == (AnnotationType.SYNTAX_ONLY, None)
+        assert parse_annotation("<!-- test:syntax-only -->") == (
+            AnnotationType.SYNTAX_ONLY,
+            None,
+        )
 
     def test_parses_assert(self):
         assert parse_annotation("<!-- test:assert -->") == (AnnotationType.ASSERT, None)
 
     def test_parses_fixture_with_name(self):
-        assert parse_annotation('<!-- test:fixture name="my-table" -->') == (AnnotationType.FIXTURE, "my-table")
+        assert parse_annotation('<!-- test:fixture name="my-table" -->') == (
+            AnnotationType.FIXTURE,
+            "my-table",
+        )
 
     def test_parses_use_with_name(self):
-        assert parse_annotation('<!-- test:use name="my-table" -->') == (AnnotationType.USE, "my-table")
+        assert parse_annotation('<!-- test:use name="my-table" -->') == (
+            AnnotationType.USE,
+            "my-table",
+        )
 
     def test_returns_none_for_plain_text(self):
         assert parse_annotation("Some text") is None
@@ -143,10 +160,14 @@ class TestScanPosts:
 class TestBuildFixtureRegistry:
     def test_registers_fixture_blocks(self):
         from blog_validate.languages.base import CodeBlock
+
         block = CodeBlock(
-            language="sql", code="CREATE TABLE t (id INT);",
-            annotation=AnnotationType.FIXTURE, fixture_name="my-table",
-            post_slug="post-1", block_index=0,
+            language="sql",
+            code="CREATE TABLE t (id INT);",
+            annotation=AnnotationType.FIXTURE,
+            fixture_name="my-table",
+            post_slug="post-1",
+            block_index=0,
         )
         registry = build_fixture_registry([PostBlocks(slug="post-1", blocks=[block])])
         assert "my-table" in registry
@@ -154,27 +175,47 @@ class TestBuildFixtureRegistry:
 
     def test_ignores_non_fixture_blocks(self):
         from blog_validate.languages.base import CodeBlock
+
         block = CodeBlock(
-            language="sql", code="SELECT 1",
+            language="sql",
+            code="SELECT 1",
             annotation=AnnotationType.DEFAULT,
-            post_slug="post-1", block_index=0,
+            post_slug="post-1",
+            block_index=0,
         )
         registry = build_fixture_registry([PostBlocks(slug="post-1", blocks=[block])])
         assert len(registry) == 0
 
     def test_collects_fixtures_across_multiple_posts(self):
         from blog_validate.languages.base import CodeBlock
+
         posts = [
-            PostBlocks(slug="post-1", blocks=[
-                CodeBlock(language="sql", code="CREATE TABLE a (id INT);",
-                         annotation=AnnotationType.FIXTURE, fixture_name="table-a",
-                         post_slug="post-1", block_index=0)
-            ]),
-            PostBlocks(slug="post-2", blocks=[
-                CodeBlock(language="sql", code="CREATE TABLE b (id INT);",
-                         annotation=AnnotationType.FIXTURE, fixture_name="table-b",
-                         post_slug="post-2", block_index=0)
-            ]),
+            PostBlocks(
+                slug="post-1",
+                blocks=[
+                    CodeBlock(
+                        language="sql",
+                        code="CREATE TABLE a (id INT);",
+                        annotation=AnnotationType.FIXTURE,
+                        fixture_name="table-a",
+                        post_slug="post-1",
+                        block_index=0,
+                    )
+                ],
+            ),
+            PostBlocks(
+                slug="post-2",
+                blocks=[
+                    CodeBlock(
+                        language="sql",
+                        code="CREATE TABLE b (id INT);",
+                        annotation=AnnotationType.FIXTURE,
+                        fixture_name="table-b",
+                        post_slug="post-2",
+                        block_index=0,
+                    )
+                ],
+            ),
         ]
         registry = build_fixture_registry(posts)
         assert "table-a" in registry

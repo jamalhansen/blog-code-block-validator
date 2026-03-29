@@ -25,14 +25,18 @@ class SQLValidator(Validator):
         try:
             context.conn.execute(code)
         except Exception as e:
-            raise ValidationError(f"SQL execution error: {type(e).__name__}: {e}") from e
+            raise ValidationError(
+                f"SQL execution error: {type(e).__name__}: {e}"
+            ) from e
 
     def execute_assert(self, code: str, context: ExecutionContext) -> None:
         """Execute as assertion. Query must return a single truthy value."""
         try:
             result = context.conn.execute(code).fetchone()
         except Exception as e:
-            raise ValidationError(f"SQL assertion error: {type(e).__name__}: {e}") from e
+            raise ValidationError(
+                f"SQL assertion error: {type(e).__name__}: {e}"
+            ) from e
 
         if result is None:
             raise ValidationError("SQL assertion returned no rows")

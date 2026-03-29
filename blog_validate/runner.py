@@ -3,7 +3,12 @@ from pathlib import Path
 from typing import Callable
 from blog_validate.extractor import FixtureRegistry, PostBlocks
 from blog_validate.languages import VALIDATORS, make_context
-from blog_validate.languages.base import AnnotationType, CodeBlock, ExecutionContext, ValidationError
+from blog_validate.languages.base import (
+    AnnotationType,
+    CodeBlock,
+    ExecutionContext,
+    ValidationError,
+)
 from blog_validate.languages.sql import SQLValidator
 
 
@@ -48,7 +53,9 @@ def _run_block(
         return BlockResult(block=block, status="skipped", error="dry-run")
 
     if verbose:
-        print_fn(f"  [{block.annotation.value}] {block.language} block {block.block_index}")
+        print_fn(
+            f"  [{block.annotation.value}] {block.language} block {block.block_index}"
+        )
 
     annotation = block.annotation
 
@@ -62,22 +69,32 @@ def _run_block(
     if annotation == AnnotationType.USE:
         name = block.fixture_name
         if not name or name not in fixture_registry:
-            return BlockResult(block=block, status="failed", error=f"Unknown fixture: {name!r}")
+            return BlockResult(
+                block=block, status="failed", error=f"Unknown fixture: {name!r}"
+            )
         fixture = fixture_registry[name]
         validator = VALIDATORS.get(fixture.language)
         if validator is None:
-            return BlockResult(block=block, status="skipped",
-                               error=f"No validator for fixture language {fixture.language!r}")
+            return BlockResult(
+                block=block,
+                status="skipped",
+                error=f"No validator for fixture language {fixture.language!r}",
+            )
         try:
             validator.execute(fixture.code, ctx)
             return BlockResult(block=block, status="passed")
         except ValidationError as e:
-            return BlockResult(block=block, status="failed", error=f"Fixture {name!r} failed: {e}")
+            return BlockResult(
+                block=block, status="failed", error=f"Fixture {name!r} failed: {e}"
+            )
 
     validator = VALIDATORS.get(block.language)
     if validator is None:
-        return BlockResult(block=block, status="skipped",
-                           error=f"No validator for language {block.language!r}")
+        return BlockResult(
+            block=block,
+            status="skipped",
+            error=f"No validator for language {block.language!r}",
+        )
 
     if annotation == AnnotationType.SYNTAX_ONLY:
         try:
@@ -89,8 +106,11 @@ def _run_block(
     if annotation == AnnotationType.EXPECTED_FAILURE:
         try:
             validator.execute(block.code, ctx)
-            return BlockResult(block=block, status="failed",
-                               error="Expected failure but code succeeded")
+            return BlockResult(
+                block=block,
+                status="failed",
+                error="Expected failure but code succeeded",
+            )
         except ValidationError:
             return BlockResult(block=block, status="passed")
 
@@ -177,7 +197,10 @@ def resolve_changed_posts(
     if changed_fixture_names:
         for post in all_posts:
             for block in post.blocks:
-                if block.annotation == AnnotationType.USE and block.fixture_name in changed_fixture_names:
+                if (
+                    block.annotation == AnnotationType.USE
+                    and block.fixture_name in changed_fixture_names
+                ):
                     consumer_slugs.add(post.slug)
 
     all_affected = changed_slugs | consumer_slugs
@@ -186,9 +209,11 @@ def resolve_changed_posts(
 
 def get_changed_files() -> list[Path]:
     import subprocess
+
     result = subprocess.run(
         ["git", "diff", "--cached", "--name-only"],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     if result.returncode != 0:
         return []

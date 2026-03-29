@@ -1,7 +1,11 @@
 import pytest
 import duckdb
 from blog_validate.languages.base import (
-    AnnotationType, CodeBlock, ExecutionContext, ValidationError, Validator,
+    AnnotationType,
+    CodeBlock,
+    ExecutionContext,
+    ValidationError,
+    Validator,
 )
 
 
@@ -16,7 +20,9 @@ def test_annotation_type_string_values():
 
 
 def test_code_block_has_defaults():
-    block = CodeBlock(language="python", code="x = 1", annotation=AnnotationType.DEFAULT)
+    block = CodeBlock(
+        language="python", code="x = 1", annotation=AnnotationType.DEFAULT
+    )
     assert block.fixture_name is None
     assert block.post_slug == ""
     assert block.block_index == 0

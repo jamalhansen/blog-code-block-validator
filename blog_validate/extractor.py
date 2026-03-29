@@ -46,7 +46,15 @@ def extract_blocks(content: str, slug: str) -> list[CodeBlock]:
             if i < len(lines):
                 fence_m = re.match(r"^```(\w+)\s*$", lines[i].strip())
                 if fence_m:
-                    i = _consume_fence(lines, i, fence_m.group(1), annotation, fixture_name, slug, blocks)
+                    i = _consume_fence(
+                        lines,
+                        i,
+                        fence_m.group(1),
+                        annotation,
+                        fixture_name,
+                        slug,
+                        blocks,
+                    )
                     continue
             # Annotation not followed by a fence — orphaned, skip
             continue
@@ -54,7 +62,9 @@ def extract_blocks(content: str, slug: str) -> list[CodeBlock]:
         # Check for bare code fence (no annotation)
         fence_m = re.match(r"^```(\w+)\s*$", stripped)
         if fence_m:
-            i = _consume_fence(lines, i, fence_m.group(1), AnnotationType.DEFAULT, None, slug, blocks)
+            i = _consume_fence(
+                lines, i, fence_m.group(1), AnnotationType.DEFAULT, None, slug, blocks
+            )
             continue
 
         i += 1
@@ -79,14 +89,16 @@ def _consume_fence(
         i += 1
     if i < len(lines):
         i += 1  # skip closing ```
-    blocks.append(CodeBlock(
-        language=lang,
-        code="\n".join(fence_lines).strip(),
-        annotation=annotation,
-        fixture_name=fixture_name,
-        post_slug=slug,
-        block_index=len(blocks),
-    ))
+    blocks.append(
+        CodeBlock(
+            language=lang,
+            code="\n".join(fence_lines).strip(),
+            annotation=annotation,
+            fixture_name=fixture_name,
+            post_slug=slug,
+            block_index=len(blocks),
+        )
+    )
     return i
 
 

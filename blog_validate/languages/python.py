@@ -17,4 +17,6 @@ class PythonValidator(Validator):
         except AssertionError as e:
             raise ValidationError(f"Assertion failed: {e}") from e
         except Exception as e:
-            raise ValidationError(f"Python execution error: {type(e).__name__}: {e}") from e
+            raise ValidationError(
+                f"Python execution error: {type(e).__name__}: {e}"
+            ) from e
