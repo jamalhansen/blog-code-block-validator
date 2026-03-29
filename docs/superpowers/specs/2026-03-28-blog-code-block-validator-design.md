@@ -33,7 +33,7 @@ blog-code-block-validator/
 │       └── pre-commit    # canonical hook for blog repo installation
 ├── pyproject.toml
 ├── README.md
-└── blog-validate.toml    # example config (not used here — lives in blog repo)
+└── README.md
 ```
 
 ---
@@ -149,13 +149,9 @@ post_file = "index.md"
 
 [sql]
 backend = "duckdb"
-
-[validate]
-default_language_behavior = "skip"   # skip | syntax-only for unknown languages
-helpers_file = "blog-validate-helpers.py"  # optional; auto-exec'd into Python globals for every post
 ```
 
-The helpers file is optional. If present, it is executed into the shared Python globals context before any blocks run in a post. Use it for reusable assertion helpers:
+Unknown languages are skipped by default. If `blog-validate-helpers.py` exists at the blog root, it is automatically executed into the shared Python globals context before any blocks run in a post. Use it for reusable assertion helpers:
 
 ```python
 # blog-validate-helpers.py
