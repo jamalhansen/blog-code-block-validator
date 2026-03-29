@@ -1,16 +1,20 @@
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from blog_validate.languages.base import AnnotationType, CodeBlock
 
 ANNOTATION_RE = re.compile(r'^<!-- test:([\w-]+)(?:\s+name="([^"]+)")?\s*-->$')
+NEEDS_RE = re.compile(r"^<!-- test:needs:\s*([^>]+?)\s*-->$")
 FixtureRegistry = dict[str, CodeBlock]
+
+_LANG_BY_EXT: dict[str, str] = {".sql": "sql", ".py": "python"}
 
 
 @dataclass
 class PostBlocks:
     slug: str
     blocks: list[CodeBlock]
+    needs: list[str] = field(default_factory=list)
 
 
 def parse_annotation(line: str) -> tuple[AnnotationType, str | None] | None:
@@ -23,6 +27,16 @@ def parse_annotation(line: str) -> tuple[AnnotationType, str | None] | None:
     except ValueError:
         return None
     return annotation, m.group(2)
+
+
+def _parse_needs(content: str) -> list[str]:
+    """Collect all <!-- test:needs: name1, name2 --> declarations in the file."""
+    names: list[str] = []
+    for line in content.split("\n"):
+        m = NEEDS_RE.match(line.strip())
+        if m:
+            names.extend(n.strip() for n in m.group(1).split(",") if n.strip())
+    return names
 
 
 def extract_blocks(content: str, slug: str) -> list[CodeBlock]:
@@ -117,8 +131,46 @@ def scan_posts(blog_root: Path, content_path: str, post_file: str) -> list[PostB
         content = index_file.read_text()
         slug = post_dir.name
         blocks = extract_blocks(content, slug)
-        results.append(PostBlocks(slug=slug, blocks=blocks))
+        needs = _parse_needs(content)
+        results.append(PostBlocks(slug=slug, blocks=blocks, needs=needs))
     return results
+
+
+def scan_helpers_dir(
+    blog_root: Path,
+) -> tuple[list[CodeBlock], FixtureRegistry]:
+    """Scan blog-validate-helpers/ for named helper files.
+
+    Returns:
+        base_blocks: files whose names start with '_' — auto-run before every post
+        named: all other files, registered by filename stem for opt-in via test:needs
+    """
+    helpers_dir = blog_root / "blog-validate-helpers"
+    base_blocks: list[CodeBlock] = []
+    named: FixtureRegistry = {}
+
+    if not helpers_dir.exists():
+        return base_blocks, named
+
+    for path in sorted(helpers_dir.iterdir()):
+        if path.suffix not in _LANG_BY_EXT:
+            continue
+        language = _LANG_BY_EXT[path.suffix]
+        name = path.stem.lstrip("_")
+        helper_block = CodeBlock(
+            language=language,
+            code=path.read_text(),
+            annotation=AnnotationType.FIXTURE,
+            fixture_name=name,
+            post_slug="<helpers>",
+            block_index=0,
+        )
+        if path.stem.startswith("_"):
+            base_blocks.append(helper_block)
+        else:
+            named[name] = helper_block
+
+    return base_blocks, named
 
 
 def build_fixture_registry(all_posts: list[PostBlocks]) -> FixtureRegistry:

@@ -2,6 +2,7 @@ from blog_validate.extractor import (
     parse_annotation,
     extract_blocks,
     scan_posts,
+    scan_helpers_dir,
     build_fixture_registry,
     PostBlocks,
 )
@@ -220,3 +221,71 @@ class TestBuildFixtureRegistry:
         registry = build_fixture_registry(posts)
         assert "table-a" in registry
         assert "table-b" in registry
+
+
+class TestScanHelpersDir:
+    def test_returns_empty_when_no_helpers_dir(self, tmp_path):
+        base_blocks, named = scan_helpers_dir(tmp_path)
+        assert base_blocks == []
+        assert named == {}
+
+    def test_loads_sql_helper_as_named_fixture(self, tmp_path):
+        d = tmp_path / "blog-validate-helpers"
+        d.mkdir()
+        (d / "customers.sql").write_text("CREATE TABLE customers (id INT)")
+        base_blocks, named = scan_helpers_dir(tmp_path)
+        assert base_blocks == []
+        assert "customers" in named
+        assert named["customers"].language == "sql"
+        assert "customers" in named["customers"].code
+
+    def test_loads_python_helper_by_extension(self, tmp_path):
+        d = tmp_path / "blog-validate-helpers"
+        d.mkdir()
+        (d / "faker-setup.py").write_text("import random")
+        _, named = scan_helpers_dir(tmp_path)
+        assert "faker-setup" in named
+        assert named["faker-setup"].language == "python"
+
+    def test_underscore_prefix_goes_to_base_blocks(self, tmp_path):
+        d = tmp_path / "blog-validate-helpers"
+        d.mkdir()
+        (d / "_base.sql").write_text("SELECT 1")
+        (d / "customers.sql").write_text("CREATE TABLE customers (id INT)")
+        base_blocks, named = scan_helpers_dir(tmp_path)
+        assert len(base_blocks) == 1
+        assert base_blocks[0].fixture_name == "base"
+        assert "customers" in named
+        assert "_base" not in named
+
+    def test_ignores_unknown_extensions(self, tmp_path):
+        d = tmp_path / "blog-validate-helpers"
+        d.mkdir()
+        (d / "notes.md").write_text("# notes")
+        (d / "config.toml").write_text("[x]")
+        _, named = scan_helpers_dir(tmp_path)
+        assert named == {}
+
+
+class TestNeedsParsing:
+    def test_needs_parsed_from_post(self, tmp_path):
+        (tmp_path / "blog-validate.toml").write_text(
+            '[blog]\ncontent_path = "content/blog"\npost_file = "index.md"\n'
+        )
+        post_dir = tmp_path / "content" / "blog" / "my-post"
+        post_dir.mkdir(parents=True)
+        (post_dir / "index.md").write_text(
+            "<!-- test:needs: customers, orders -->\n\n```sql\nSELECT 1\n```\n"
+        )
+        posts = scan_posts(tmp_path, "content/blog", "index.md")
+        assert posts[0].needs == ["customers", "orders"]
+
+    def test_post_with_no_needs_has_empty_list(self, tmp_path):
+        (tmp_path / "blog-validate.toml").write_text(
+            '[blog]\ncontent_path = "content/blog"\npost_file = "index.md"\n'
+        )
+        post_dir = tmp_path / "content" / "blog" / "bare-post"
+        post_dir.mkdir(parents=True)
+        (post_dir / "index.md").write_text("```sql\nSELECT 1\n```\n")
+        posts = scan_posts(tmp_path, "content/blog", "index.md")
+        assert posts[0].needs == []

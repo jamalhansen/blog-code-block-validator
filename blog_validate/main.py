@@ -3,7 +3,7 @@ from typing import Optional
 import typer
 from typing import Annotated
 from blog_validate.config import load_config
-from blog_validate.extractor import scan_posts, build_fixture_registry
+from blog_validate.extractor import scan_posts, build_fixture_registry, scan_helpers_dir
 from blog_validate.languages.base import AnnotationType
 from blog_validate.runner import (
     PostResult,
@@ -74,10 +74,9 @@ def check(
     all_post_blocks = scan_posts(
         config.root, config.blog.content_path, config.blog.post_file
     )
-    fixture_registry = build_fixture_registry(all_post_blocks)
-    helpers_path: Path | None = config.root / "blog-validate-helpers.py"
-    if not helpers_path.exists():
-        helpers_path = None
+    base_blocks, helper_fixtures = scan_helpers_dir(config.root)
+    # Post-level fixtures take precedence over helper fixtures on name collision
+    fixture_registry = {**helper_fixtures, **build_fixture_registry(all_post_blocks)}
 
     if all_posts:
         posts_to_check = all_post_blocks
@@ -105,7 +104,7 @@ def check(
         run_post(
             p,
             fixture_registry,
-            helpers_path=helpers_path,
+            base_blocks=base_blocks or None,
             dry_run=dry_run,
             verbose=verbose,
         )

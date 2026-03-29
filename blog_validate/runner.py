@@ -139,16 +139,33 @@ def _run_block(
 def run_post(
     post: PostBlocks,
     fixture_registry: FixtureRegistry,
-    helpers_path: Path | None = None,
+    base_blocks: list[CodeBlock] | None = None,
     dry_run: bool = False,
     verbose: bool = False,
     print_fn: Callable[[str], None] = print,
 ) -> PostResult:
     ctx = make_context()
 
-    if helpers_path and helpers_path.exists():
-        helpers_code = helpers_path.read_text()
-        exec(compile(helpers_code, str(helpers_path), "exec"), ctx.py_globals)
+    if not dry_run:
+        # Auto-run helpers (files prefixed with _ in blog-validate-helpers/)
+        for base in base_blocks or []:
+            validator = VALIDATORS.get(base.language)
+            if validator:
+                try:
+                    validator.execute(base.code, ctx)
+                except ValidationError:
+                    pass
+
+        # Execute named helpers declared via <!-- test:needs: name1, name2 -->
+        for name in post.needs:
+            helper = fixture_registry.get(name)
+            if helper:
+                validator = VALIDATORS.get(helper.language)
+                if validator:
+                    try:
+                        validator.execute(helper.code, ctx)
+                    except ValidationError:
+                        pass
 
     results = [
         _run_block(b, ctx, fixture_registry, dry_run, verbose, print_fn)

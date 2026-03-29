@@ -145,17 +145,67 @@ class TestRunPost:
         result = run_post(PostBlocks(slug="test", blocks=[fixture]), {})
         assert result.results[0].status == "skipped"
 
-    def test_helpers_file_injected_into_python_context(self, tmp_path):
-        helpers = tmp_path / "blog-validate-helpers.py"
-        helpers.write_text("def greet(): return 'hello'")
+    def test_base_block_injected_into_context(self):
+        base = CodeBlock(
+            language="python",
+            code="def greet(): return 'hello'",
+            annotation=AnnotationType.FIXTURE,
+            fixture_name="greet",
+            post_slug="<helpers>",
+            block_index=0,
+        )
         post = PostBlocks(
             slug="test",
             blocks=[
                 block("python", "assert greet() == 'hello'", AnnotationType.ASSERT)
             ],
         )
-        result = run_post(post, {}, helpers_path=helpers)
+        result = run_post(post, {}, base_blocks=[base])
         assert result.passed
+
+    def test_needs_loads_named_helper_before_blocks(self):
+        helper = CodeBlock(
+            language="sql",
+            code="CREATE TABLE widgets (id INT); INSERT INTO widgets VALUES (1),(2),(3)",
+            annotation=AnnotationType.FIXTURE,
+            fixture_name="widgets",
+            post_slug="<helpers>",
+            block_index=0,
+        )
+        registry = {"widgets": helper}
+        post = PostBlocks(
+            slug="test",
+            blocks=[block("sql", "SELECT COUNT(*) FROM widgets")],
+            needs=["widgets"],
+        )
+        result = run_post(post, registry)
+        assert result.passed
+
+    def test_needs_unknown_helper_is_silently_ignored(self):
+        post = PostBlocks(
+            slug="test",
+            blocks=[block("sql", "SELECT 1")],
+            needs=["nonexistent-helper"],
+        )
+        result = run_post(post, {})
+        assert result.passed
+
+    def test_base_blocks_skipped_in_dry_run(self):
+        base = CodeBlock(
+            language="python",
+            code="x = 42",
+            annotation=AnnotationType.FIXTURE,
+            fixture_name="base",
+            post_slug="<helpers>",
+            block_index=0,
+        )
+        post = PostBlocks(
+            slug="test",
+            blocks=[block("python", "assert x == 42", AnnotationType.ASSERT)],
+        )
+        result = run_post(post, {}, base_blocks=[base], dry_run=True)
+        # dry_run skips base setup so the assert block is also skipped
+        assert all(r.status == "skipped" for r in result.results)
 
     def test_post_result_counts(self):
         blocks = [
