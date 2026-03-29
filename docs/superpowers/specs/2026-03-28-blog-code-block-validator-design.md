@@ -48,8 +48,18 @@ HTML comments placed on the line immediately before a fenced code block. Invisib
 | `<!-- test:expected-failure -->` | Assert the block raises an error |
 | `<!-- test:setup -->` | Run for side effects; no result assertion |
 | `<!-- test:syntax-only -->` | Parse/compile check only; do not execute |
+| `<!-- test:assert -->` | Run as an assertion — failure raises test error (see below) |
 | `<!-- test:fixture name="<name>" -->` | Define a named shared fixture |
 | `<!-- test:use name="<name>" -->` | Inject a named fixture before this block |
+
+### Assert blocks
+
+**Python**: `exec()`'d normally — `assert` statements or any raised exception counts as failure. Helper functions from `blog-validate-helpers.py` are available (see Config).
+
+**SQL**: query must return a single truthy value. Use boolean expressions:
+```sql
+SELECT COUNT(*) = 10 FROM customers
+```
 
 ### Examples
 
@@ -68,6 +78,16 @@ INSERT INTO customers VALUES (1, 'Alice'), (2, 'Bob');
 <!-- test:use name="customers-table" -->
 ```sql
 SELECT * FROM customers WHERE id = 1
+```
+
+<!-- test:assert -->
+```sql
+SELECT COUNT(*) = 2 FROM customers
+```
+
+<!-- test:assert -->
+```python
+assert_row_count(conn, "customers", 2)
 ```
 ```
 
@@ -132,7 +152,19 @@ backend = "duckdb"
 
 [validate]
 default_language_behavior = "skip"   # skip | syntax-only for unknown languages
+helpers_file = "blog-validate-helpers.py"  # optional; auto-exec'd into Python globals for every post
 ```
+
+The helpers file is optional. If present, it is executed into the shared Python globals context before any blocks run in a post. Use it for reusable assertion helpers:
+
+```python
+# blog-validate-helpers.py
+def assert_row_count(conn, table, n):
+    actual = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+    assert actual == n, f"Expected {n} rows in {table}, got {actual}"
+```
+
+`conn` is automatically available in Python execution contexts — injected by the runner from the shared `ExecutionContext`.
 
 Tool finds `blog-validate.toml` by walking up from the current directory.
 
