@@ -1,0 +1,26 @@
+[project]
+name = "blog-code-block-validator"
+version = "0.1.0"
+description = "Validate code blocks in Hugo blog posts"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "duckdb>=1.5.1",
+    "hatchling>=1.29.0",
+    "typer>=0.24.1",
+]
+
+[project.scripts]
+blog-validate = "blog_validate.main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["blog_validate"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
