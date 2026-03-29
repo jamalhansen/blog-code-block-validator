@@ -86,15 +86,28 @@ SELECT * FROM customers
 
 When a fixture post changes, all posts that use its fixtures are automatically included in `--changed` validation.
 
-## Helpers File
+## Helpers Directory
 
-Add `blog-validate-helpers.py` at your blog root for reusable assertion helpers. It is automatically injected into the Python execution context for every post:
+Add a `blog-validate-helpers/` directory at your blog repo root for reusable setup fixtures. File extension determines language (`.sql` → SQL, `.py` → Python).
 
-```python
-def assert_row_count(conn, table, n):
-    actual = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
-    assert actual == n, f"Expected {n} rows in {table}, got {actual}"
+**Named helpers** — opt in per post with a `<!-- test:needs: ... -->` comment after the frontmatter closing `---`:
+
+```markdown
+<!-- test:needs: customers, orders -->
 ```
+
+The comment is invisible to readers. The named helpers run before the post's blocks, setting up tables or state the post's SQL expects.
+
+**Auto-run helpers** — prefix a filename with `_` to run it before every post automatically:
+
+```
+blog-validate-helpers/
+├── _base.sql           # auto-run before every post
+├── customers.sql       # opt-in: <!-- test:needs: customers -->
+└── orders.sql          # opt-in: <!-- test:needs: orders -->
+```
+
+Each helper file should use `CREATE TABLE IF NOT EXISTS` for idempotency.
 
 ## Project Structure
 
