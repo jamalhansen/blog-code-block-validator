@@ -15,6 +15,14 @@ from blog_validate.runner import (
 app = typer.Typer(help="Validate code blocks in Hugo blog posts.")
 
 
+def _code_preview(code: str, max_lines: int = 3) -> str:
+    lines = code.strip().splitlines()
+    preview = "\n".join(f"    {line}" for line in lines[:max_lines])
+    if len(lines) > max_lines:
+        preview += "\n    ..."
+    return preview
+
+
 def _print_results(results: list[PostResult], verbose: bool) -> bool:
     """Print results. Returns True if any post failed."""
     any_failed = False
@@ -32,6 +40,7 @@ def _print_results(results: list[PostResult], verbose: bool) -> bool:
                     typer.echo(
                         f"  FAIL block {r.block.block_index} ({r.block.language}): {r.error}"
                     )
+                    typer.echo(_code_preview(r.block.code))
                 elif verbose and r.status == "passed":
                     typer.echo(
                         f"  PASS block {r.block.block_index} ({r.block.language})"
@@ -157,6 +166,26 @@ def list_posts() -> None:
         counts_str = ", ".join(f"{k}={v}" for k, v in sorted(counts.items()))
         noun = "block" if len(post.blocks) == 1 else "blocks"
         typer.echo(f"{post.slug}: {len(post.blocks)} {noun} ({counts_str})")
+
+
+@app.command("list-skips")
+def list_skips() -> None:
+    """Show all skipped blocks with a code preview."""
+    config = load_config(Path.cwd())
+    all_post_blocks = scan_posts(
+        config.root, config.blog.content_path, config.blog.post_file
+    )
+
+    total = 0
+    for post in all_post_blocks:
+        for b in post.blocks:
+            if b.annotation == AnnotationType.SKIP:
+                total += 1
+                typer.echo(f"{post.slug}  block {b.block_index} ({b.language})")
+                typer.echo(_code_preview(b.code))
+                typer.echo()
+
+    typer.echo(f"Total: {total} skipped blocks")
 
 
 def main() -> None:
