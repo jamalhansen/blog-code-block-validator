@@ -207,13 +207,14 @@ def resolve_changed_posts(
     return [p for p in all_posts if p.slug in all_affected]
 
 
-def get_changed_files() -> list[Path]:
+def get_changed_files(blog_root: Path) -> list[Path]:
     import subprocess
 
     result = subprocess.run(
         ["git", "diff", "--cached", "--name-only"],
         capture_output=True,
         text=True,
+        cwd=blog_root,
     )
     if result.returncode != 0:
         return []

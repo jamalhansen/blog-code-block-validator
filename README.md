@@ -50,6 +50,7 @@ blog-validate check --changed       # pre-commit default
 blog-validate check --post <slug>
 blog-validate list-fixtures
 blog-validate list-posts
+blog-validate list-skips            # audit all skipped blocks
 ```
 
 **Flags for `check`:**
