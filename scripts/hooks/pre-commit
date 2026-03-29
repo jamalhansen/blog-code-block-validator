@@ -1,0 +1,18 @@
+#!/bin/bash
+# Blog code block validator — pre-commit hook.
+#
+# Install into your blog repo:
+#   cp /path/to/blog-code-block-validator/scripts/hooks/pre-commit .git/hooks/pre-commit
+#   chmod +x .git/hooks/pre-commit
+#
+# Requires blog-validate installed:
+#   uv tool install /path/to/blog-code-block-validator
+
+blog-validate check --changed
+
+if [ $? -ne 0 ]; then
+    echo ""
+    echo "Fix failing code blocks before committing."
+    echo "To skip this check: git commit --no-verify"
+    exit 1
+fi
