@@ -181,6 +181,7 @@ def resolve_changed_posts(
     repo_root: Path,
     content_path: str,
     post_file: str,
+    layout: str = "bundle",
 ) -> list[PostBlocks]:
     blog_root = repo_root / content_path
 
@@ -194,9 +195,14 @@ def resolve_changed_posts(
             rel = path.relative_to(blog_root)
         except ValueError:
             continue
-        parts = rel.parts
-        if len(parts) >= 2 and parts[-1] == post_file:
-            changed_slugs.add(parts[0])
+
+        if layout == "flat":
+            if rel.suffix == ".md":
+                changed_slugs.add(rel.stem)
+        else:
+            parts = rel.parts
+            if len(parts) >= 2 and parts[-1] == post_file:
+                changed_slugs.add(parts[0])
 
     if not changed_slugs:
         return []

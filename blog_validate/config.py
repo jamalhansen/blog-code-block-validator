@@ -7,6 +7,7 @@ import tomllib
 class BlogConfig:
     content_path: str = "content/blog"
     post_file: str = "index.md"
+    layout: str = "bundle"  # "bundle" (dir/index.md) or "flat" (dir/*.md)
 
 
 @dataclass

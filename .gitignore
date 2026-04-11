@@ -1,7 +1,33 @@
-.worktrees/
+# Virtual Environment
+.venv/
+.env
+
+# Python caching
 __pycache__/
 *.py[cod]
-.venv/
-dist/
-*.egg-info/
+*$py.class
 .pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Build and Packaging
+dist/
+build/
+*.egg-info/
+
+# OS Specific
+.DS_Store
+Thumbs.db
+
+# Project-specific local overrides
+# Ignore local testing configuration so it doesn't leak into the repo
+blog-validate.toml
+blog-validate-helpers/
+tests/vault-proxy/
+
+# Local git worktrees
+.worktrees/
+
+.envrc
+.venv
+__pycache__

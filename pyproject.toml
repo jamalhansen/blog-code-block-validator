@@ -22,5 +22,9 @@ packages = ["blog_validate"]
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
+    "pytest-cov>=5.0",
     "ruff>=0.15.8",
 ]
+
+[tool.pytest.ini_options]
+addopts = "--cov=blog_validate --cov-fail-under=50"

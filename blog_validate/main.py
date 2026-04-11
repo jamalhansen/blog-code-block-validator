@@ -72,7 +72,7 @@ def check(
 
     config = load_config(Path.cwd())
     all_post_blocks = scan_posts(
-        config.root, config.blog.content_path, config.blog.post_file
+        config.root, config.blog.content_path, config.blog.post_file, config.blog.layout
     )
     base_blocks, helper_fixtures = scan_helpers_dir(config.root)
     # Post-level fixtures take precedence over helper fixtures on name collision
@@ -89,6 +89,7 @@ def check(
             config.root,
             config.blog.content_path,
             config.blog.post_file,
+            config.blog.layout,
         )
     else:
         posts_to_check = [p for p in all_post_blocks if p.slug == post]
@@ -124,7 +125,7 @@ def list_fixtures() -> None:
     """Show all named fixtures and the posts that define and use them."""
     config = load_config(Path.cwd())
     all_post_blocks = scan_posts(
-        config.root, config.blog.content_path, config.blog.post_file
+        config.root, config.blog.content_path, config.blog.post_file, config.blog.layout
     )
     fixture_registry = build_fixture_registry(all_post_blocks)
 
@@ -151,7 +152,7 @@ def list_posts() -> None:
     """Show all posts with code blocks and their annotation counts."""
     config = load_config(Path.cwd())
     all_post_blocks = scan_posts(
-        config.root, config.blog.content_path, config.blog.post_file
+        config.root, config.blog.content_path, config.blog.post_file, config.blog.layout
     )
 
     if not all_post_blocks:
@@ -172,7 +173,7 @@ def list_skips() -> None:
     """Show all skipped blocks with a code preview."""
     config = load_config(Path.cwd())
     all_post_blocks = scan_posts(
-        config.root, config.blog.content_path, config.blog.post_file
+        config.root, config.blog.content_path, config.blog.post_file, config.blog.layout
     )
 
     total = 0

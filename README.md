@@ -16,9 +16,9 @@ Add `blog-validate.toml` to your blog repo root:
 [blog]
 content_path = "content/blog"
 post_file = "index.md"
-
-[sql]
-backend = "duckdb"
+# "bundle" (default) for Hugo leaf bundles (dir/index.md)
+# "flat" for simple markdown files (dir/*.md)
+layout = "bundle"
 ```
 
 Install the pre-commit hook:
@@ -36,11 +36,36 @@ Place these HTML comments on the line immediately before a code fence:
 |---|---|
 | `<!-- test:skip -->` | Skip this block |
 | `<!-- test:expected-failure -->` | Assert the block errors |
-| `<!-- test:setup -->` | Run for side effects only |
+| `<!-- test:setup -->` | Run for side effects only (also supports `:start` and `:end` for multi-line cleanup) |
 | `<!-- test:syntax-only -->` | Parse only, don't execute |
-| `<!-- test:assert -->` | Assert result is truthy |
+| `<!-- test:assert -->` | Assert result is truthy (also supports `:start` and `:end`) |
 | `<!-- test:fixture name="..." -->` | Define a named shared fixture |
 | `<!-- test:use name="..." -->` | Inject a named fixture |
+
+## Semantic Markers for Cleanup
+
+To keep patterns clean for publishing, you can use semantic markers for multi-line test blocks:
+
+```markdown
+<!-- test:setup:start -->
+```python
+# Test-only setup code
+```
+<!-- test:setup:end -->
+
+<!-- test:assert:start -->
+```python
+# Test-only assertion code
+```
+<!-- test:assert:end -->
+```
+
+These markers are recognized by the validator but provide clear anchors for automated removal before publishing:
+
+```bash
+# Example cleanup
+sed -i '' '/<!-- test:.*:start -->/,/<!-- test:.*:end -->/d' post.md
+```
 
 ## CLI
 

@@ -22,8 +22,15 @@ def parse_annotation(line: str) -> tuple[AnnotationType, str | None] | None:
     m = ANNOTATION_RE.match(line.strip())
     if not m:
         return None
+
+    tag = m.group(1)
+    # Handle semantic markers like test:setup:start or test:assert:end
+    # We strip the suffix to match the base AnnotationType
+    if tag.endswith(":start") or tag.endswith(":end"):
+        tag = tag.rsplit(":", 1)[0]
+
     try:
-        annotation = AnnotationType(m.group(1))
+        annotation = AnnotationType(tag)
     except ValueError:
         return None
     return annotation, m.group(2)
@@ -116,23 +123,37 @@ def _consume_fence(
     return i
 
 
-def scan_posts(blog_root: Path, content_path: str, post_file: str) -> list[PostBlocks]:
-    """Scan all post directories and extract their code blocks."""
+def scan_posts(
+    blog_root: Path, content_path: str, post_file: str, layout: str = "bundle"
+) -> list[PostBlocks]:
+    """Scan all posts and extract their code blocks."""
     posts_dir = blog_root / content_path
     if not posts_dir.exists():
         return []
+
     results = []
-    for post_dir in sorted(posts_dir.iterdir()):
-        if not post_dir.is_dir():
-            continue
-        index_file = post_dir / post_file
-        if not index_file.exists():
-            continue
-        content = index_file.read_text()
-        slug = post_dir.name
-        blocks = extract_blocks(content, slug)
-        needs = _parse_needs(content)
-        results.append(PostBlocks(slug=slug, blocks=blocks, needs=needs))
+    if layout == "flat":
+        # Scan all .md files in the content directory
+        for path in sorted(posts_dir.glob("*.md")):
+            content = path.read_text()
+            slug = path.stem
+            blocks = extract_blocks(content, slug)
+            needs = _parse_needs(content)
+            results.append(PostBlocks(slug=slug, blocks=blocks, needs=needs))
+    else:
+        # Default bundle layout: each post is a directory with a specific post_file
+        for post_dir in sorted(posts_dir.iterdir()):
+            if not post_dir.is_dir():
+                continue
+            index_file = post_dir / post_file
+            if not index_file.exists():
+                continue
+            content = index_file.read_text()
+            slug = post_dir.name
+            blocks = extract_blocks(content, slug)
+            needs = _parse_needs(content)
+            results.append(PostBlocks(slug=slug, blocks=blocks, needs=needs))
+
     return results
 
 
