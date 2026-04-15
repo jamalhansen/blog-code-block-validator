@@ -192,17 +192,22 @@ def resolve_changed_posts(
     changed_slugs: set[str] = set()
     for path in changed_files:
         try:
-            rel = path.relative_to(blog_root)
+            abs_path = (repo_root / path).resolve()
+            rel = abs_path.relative_to(blog_root.resolve())
         except ValueError:
             continue
 
         if layout == "flat":
             if rel.suffix == ".md":
                 changed_slugs.add(rel.stem)
+        elif layout == "vault":
+            if rel.suffix == ".md":
+                # In vault, slug is the parent directory name
+                changed_slugs.add(rel.parent.name)
         else:
-            parts = rel.parts
-            if len(parts) >= 2 and parts[-1] == post_file:
-                changed_slugs.add(parts[0])
+            # Bundle layout: post_file can be at any depth
+            if rel.name == post_file:
+                changed_slugs.add(rel.parent.name)
 
     if not changed_slugs:
         return []

@@ -124,32 +124,64 @@ def _consume_fence(
 
 
 def scan_posts(
-    blog_root: Path, content_path: str, post_file: str, layout: str = "bundle"
+    blog_root: Path,
+    content_path: str,
+    post_file: str,
+    layout: str = "bundle",
+    exclude_patterns: list[str] | None = None,
 ) -> list[PostBlocks]:
     """Scan all posts and extract their code blocks."""
     posts_dir = blog_root / content_path
     if not posts_dir.exists():
         return []
 
+    exclude_patterns = exclude_patterns or []
     results = []
     if layout == "flat":
         # Scan all .md files in the content directory
         for path in sorted(posts_dir.glob("*.md")):
+            if any(path.match(p) for p in exclude_patterns):
+                continue
             content = path.read_text()
             slug = path.stem
             blocks = extract_blocks(content, slug)
             needs = _parse_needs(content)
             results.append(PostBlocks(slug=slug, blocks=blocks, needs=needs))
-    else:
-        # Default bundle layout: each post is a directory with a specific post_file
-        for post_dir in sorted(posts_dir.iterdir()):
+    elif layout == "vault":
+        # Vault layout: blog/series/[series]/posts/[slug]/[descriptive-name].md
+        # We walk all subdirectories and for each leaf directory, take the first .md
+        for post_dir in sorted(posts_dir.rglob("*")):
             if not post_dir.is_dir():
                 continue
-            index_file = post_dir / post_file
-            if not index_file.exists():
+
+            # Check if this directory contains any .md files
+            md_files = sorted(post_dir.glob("*.md"))
+            if not md_files:
                 continue
-            content = index_file.read_text()
+
+            # Filter out excluded patterns
+            valid_mds = [
+                f for f in md_files if not any(f.match(p) for p in exclude_patterns)
+            ]
+            if not valid_mds:
+                continue
+
+            # Take the first one as the post
+            path = valid_mds[0]
+            content = path.read_text()
             slug = post_dir.name
+            blocks = extract_blocks(content, slug)
+            needs = _parse_needs(content)
+            results.append(PostBlocks(slug=slug, blocks=blocks, needs=needs))
+    else:
+        # Default bundle layout: each post is a directory with a specific post_file
+        # We use rglob to find all instances of post_file (e.g. index.md) at any depth
+        for path in sorted(posts_dir.rglob(post_file)):
+            if any(path.match(p) for p in exclude_patterns):
+                continue
+            content = path.read_text()
+            # Slug is the immediate parent directory name
+            slug = path.parent.name
             blocks = extract_blocks(content, slug)
             needs = _parse_needs(content)
             results.append(PostBlocks(slug=slug, blocks=blocks, needs=needs))

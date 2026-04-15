@@ -72,7 +72,11 @@ def check(
 
     config = load_config(Path.cwd())
     all_post_blocks = scan_posts(
-        config.root, config.blog.content_path, config.blog.post_file, config.blog.layout
+        config.root,
+        config.blog.content_path,
+        config.blog.post_file,
+        config.blog.layout,
+        config.blog.exclude_patterns,
     )
     base_blocks, helper_fixtures = scan_helpers_dir(config.root)
     # Post-level fixtures take precedence over helper fixtures on name collision
@@ -120,12 +124,80 @@ def check(
         raise typer.Exit(code=1)
 
 
+@app.command("coverage")
+def coverage(
+    unannotated_only: Annotated[
+        bool, typer.Option("--unannotated", help="List only posts with unannotated blocks")
+    ] = False,
+    show_all: Annotated[
+        bool, typer.Option("--all", help="Include posts with no code blocks")
+    ] = False,
+) -> None:
+    """Report annotation coverage across all posts."""
+    config = load_config(Path.cwd())
+    all_post_blocks = scan_posts(
+        config.root,
+        config.blog.content_path,
+        config.blog.post_file,
+        config.blog.layout,
+        config.blog.exclude_patterns,
+    )
+
+    no_blocks = 0
+    fully_covered = 0
+    needs_attention = 0
+    
+    unannotated_posts = []
+    skip_counts: dict[str, int] = {}
+
+    for post in all_post_blocks:
+        if not post.blocks:
+            no_blocks += 1
+            continue
+
+        unannotated_count = sum(
+            1 for b in post.blocks if b.annotation == AnnotationType.DEFAULT
+        )
+        
+        for b in post.blocks:
+            if b.annotation != AnnotationType.DEFAULT:
+                skip_counts[b.annotation.value] = skip_counts.get(b.annotation.value, 0) + 1
+
+        if unannotated_count > 0:
+            needs_attention += 1
+            unannotated_posts.append((post.slug, unannotated_count))
+        else:
+            fully_covered += 1
+
+    typer.echo("Coverage report")
+    typer.echo("─" * 47)
+    if show_all or no_blocks == 0:
+        typer.echo(f"Posts with no code blocks:          {no_blocks:2}  (skipped — nothing to annotate)")
+    typer.echo(f"Posts with only annotated blocks:   {fully_covered:2}  (fully covered)")
+    typer.echo(f"Posts with unannotated blocks:      {needs_attention:2}  (needs attention)")
+    
+    if unannotated_posts:
+        typer.echo("\nUnannotated posts:")
+        for slug, count in unannotated_posts:
+            noun = "block" if count == 1 else "blocks"
+            typer.echo(f"  {slug:50} {count} unannotated {noun}")
+
+    if not unannotated_only and skip_counts:
+        typer.echo("\nSkipped blocks by reason:")
+        for reason, count in sorted(skip_counts.items()):
+            typer.echo(f"  {reason:20} {count:2}")
+
+
 @app.command("list-fixtures")
 def list_fixtures() -> None:
     """Show all named fixtures and the posts that define and use them."""
     config = load_config(Path.cwd())
     all_post_blocks = scan_posts(
-        config.root, config.blog.content_path, config.blog.post_file, config.blog.layout
+        config.root,
+        config.blog.content_path,
+        config.blog.post_file,
+        config.blog.layout,
+        config.blog.exclude_patterns,
     )
     fixture_registry = build_fixture_registry(all_post_blocks)
 
@@ -152,7 +224,11 @@ def list_posts() -> None:
     """Show all posts with code blocks and their annotation counts."""
     config = load_config(Path.cwd())
     all_post_blocks = scan_posts(
-        config.root, config.blog.content_path, config.blog.post_file, config.blog.layout
+        config.root,
+        config.blog.content_path,
+        config.blog.post_file,
+        config.blog.layout,
+        config.blog.exclude_patterns,
     )
 
     if not all_post_blocks:
@@ -173,7 +249,11 @@ def list_skips() -> None:
     """Show all skipped blocks with a code preview."""
     config = load_config(Path.cwd())
     all_post_blocks = scan_posts(
-        config.root, config.blog.content_path, config.blog.post_file, config.blog.layout
+        config.root,
+        config.blog.content_path,
+        config.blog.post_file,
+        config.blog.layout,
+        config.blog.exclude_patterns,
     )
 
     total = 0

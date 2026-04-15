@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 import tomllib
 
@@ -7,7 +7,8 @@ import tomllib
 class BlogConfig:
     content_path: str = "content/blog"
     post_file: str = "index.md"
-    layout: str = "bundle"  # "bundle" (dir/index.md) or "flat" (dir/*.md)
+    layout: str = "bundle"  # "bundle", "flat", or "vault"
+    exclude_patterns: list[str] = field(default_factory=list)
 
 
 @dataclass

@@ -8,6 +8,12 @@
 # Requires blog-validate installed:
 #   uv tool install /path/to/blog-code-block-validator
 
+if ! command -v blog-validate &> /dev/null; then
+    echo "Warning: blog-validate not found in PATH."
+    echo "Install it with: uv tool install /Users/jamalhansen/projects/blog-code-block-validator"
+    exit 0 # Don't block commit if tool is missing, just warn
+fi
+
 blog-validate check --changed
 
 if [ $? -ne 0 ]; then

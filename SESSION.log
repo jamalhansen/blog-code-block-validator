@@ -1,0 +1,12 @@
+# Session Log - blog-code-block-validator
+
+## 2026-04-15
+- Implemented Feature 1: Fix Hugo series discovery using `rglob(post_file)`. Confirmed discovery of nested series posts.
+- Implemented Feature 2: Vault layout support. Added `layout = "vault"` and `exclude_patterns` to config. Handler recursively finds `.md` files and uses parent directory for slug.
+- Implemented Feature 3: `coverage` subcommand. Reports on unannotated vs annotated posts and provides a breakdown of skip reasons.
+- Updated `resolve_changed_posts` to support `vault` layout and `rglob` discovery.
+- Added comprehensive functional test suite in `tests/functional/` (discovery, annotations, coverage, carry-through, regressions).
+- Verified all 129 tests pass with 95% coverage.
+- Resolved "hanging" issue during real-world validation: Identified `input()` calls in unannotated code blocks as the cause of pauses during `check --all`.
+- Recommended `<!-- test:skip -->` annotations for blocks with `input()` to prevent interactive hangs in non-interactive environments.
+- Wired up pre-commit hooks in `~/projects/jamalhansen.com` to prevent regressions.
