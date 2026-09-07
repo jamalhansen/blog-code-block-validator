@@ -20,8 +20,22 @@ class BashValidator(Validator):
                 code, shell=True, capture_output=True, text=True, check=True
             )
         except subprocess.CalledProcessError as e:
+            output = e.stderr or e.stdout
+            # POSIX shells report 127 for "command not found" -- distinct from a
+            # command that ran and failed. This is almost always a machine-
+            # specific tool (brew, a locally-installed CLI) that will never be
+            # present in every environment the validator runs in, so the fix is
+            # usually test:skip, not a real bug in the post.
+            if e.returncode == 127:
+                raise ValidationError(
+                    f"Command not found (exit 127): {output.strip()}\n"
+                    "This usually means a machine-specific tool isn't installed "
+                    "in the validator's environment. If this command only needs "
+                    "to work on your own machine, mark the block "
+                    "<!-- test:skip --> instead of expecting it to run everywhere."
+                ) from e
             raise ValidationError(
-                f"Bash command failed with exit code {e.returncode}: {e.stderr or e.stdout}"
+                f"Bash command failed with exit code {e.returncode}: {output}"
             ) from e
         except Exception as e:
             raise ValidationError(f"Bash execution error: {e}") from e

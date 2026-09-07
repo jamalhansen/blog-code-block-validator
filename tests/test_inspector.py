@@ -208,6 +208,14 @@ class TestPostInsightProperties:
         insight = self._make_insight([])
         assert insight.mock_response_count == 0
 
+    def test_mock_response_count_empty_param_is_zero(self):
+        """Regression: <!-- test:needs: ollama_mock --> with no ':response'
+        after it parses to an empty-string param, not None. "".split("|")
+        returns [''] (length 1), which used to be miscounted as 1 configured
+        response instead of 0."""
+        insight = self._make_insight([], needs={"ollama_mock": ""})
+        assert insight.mock_response_count == 0
+
     def test_unannotated_count(self):
         blocks = [
             BlockInsight(language="python", block_index=0, annotation=AnnotationType.DEFAULT),

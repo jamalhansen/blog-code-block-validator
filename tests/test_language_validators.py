@@ -31,6 +31,22 @@ class TestBashValidator:
         with pytest.raises(ValidationError, match="syntax error"):
             v.syntax_check("if [ then")
 
+    def test_command_not_found_reports_exit_127_distinctly(self, ctx):
+        v = BashValidator()
+        with pytest.raises(ValidationError, match="Command not found \\(exit 127\\)"):
+            v.execute("this-command-definitely-does-not-exist-anywhere", ctx)
+
+    def test_command_not_found_suggests_test_skip(self, ctx):
+        v = BashValidator()
+        with pytest.raises(ValidationError, match="test:skip"):
+            v.execute("this-command-definitely-does-not-exist-anywhere", ctx)
+
+    def test_generic_failure_does_not_mention_command_not_found(self, ctx):
+        v = BashValidator()
+        with pytest.raises(ValidationError) as exc_info:
+            v.execute("exit 1", ctx)
+        assert "Command not found" not in str(exc_info.value)
+
 
 class TestMarkdownValidator:
     def test_execute_passes_on_valid_markdown(self, ctx):

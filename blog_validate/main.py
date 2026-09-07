@@ -461,7 +461,9 @@ def stats() -> None:
 @app.command("find")
 def find_language(
     language: Annotated[str, typer.Argument(help="Language to search for (e.g. python, sql)")],
-    count: Annotated[bool, typer.Option("--count", "-c", help="Show block count per post")] = True,
+    count: Annotated[
+        bool, typer.Option("--count/--no-count", "-c", help="Show block count per post")
+    ] = True,
 ) -> None:
     """List posts that contain blocks of a given language."""
     config = load_config(Path.cwd())

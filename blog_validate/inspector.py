@@ -40,7 +40,7 @@ class PostInsight:
     @property
     def mock_response_count(self) -> int:
         param = self.needs_params.get("ollama_mock")
-        if param is None:
+        if not param:
             return 0
         return len(param.split("|"))
 

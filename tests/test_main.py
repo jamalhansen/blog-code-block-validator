@@ -173,6 +173,142 @@ class TestCheckChanged:
         assert "my-post" in result.output
 
 
+class TestTestGuideCommand:
+    def test_requires_post_or_all(self, blog_root, monkeypatch):
+        monkeypatch.chdir(blog_root)
+        result = runner.invoke(app, ["test-guide"])
+        assert result.exit_code == 1
+        assert "--post" in result.output or "--all" in result.output
+
+    def test_unknown_post_exits_1(self, blog_root, monkeypatch):
+        monkeypatch.chdir(blog_root)
+        result = runner.invoke(app, ["test-guide", "--post", "nonexistent"])
+        assert result.exit_code == 1
+
+    def test_shows_guide_for_single_post(self, blog_root, monkeypatch):
+        monkeypatch.chdir(blog_root)
+        result = runner.invoke(app, ["test-guide", "--post", "my-post"])
+        assert result.exit_code == 0
+        assert "test-guide: my-post" in result.output
+        assert "Assertions" in result.output
+
+    def test_all_posts_prints_each_guide(self, tmp_path, monkeypatch):
+        (tmp_path / "blog-validate.toml").write_text(
+            '[blog]\ncontent_path = "content/blog"\npost_file = "index.md"\n'
+        )
+        for slug in ("post-a", "post-b"):
+            post_dir = tmp_path / "content" / "blog" / slug
+            post_dir.mkdir(parents=True)
+            (post_dir / "index.md").write_text("```sql\nSELECT 1\n```\n")
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["test-guide", "--all"])
+        assert result.exit_code == 0
+        assert "test-guide: post-a" in result.output
+        assert "test-guide: post-b" in result.output
+
+    def test_all_posts_skips_posts_with_no_blocks(self, tmp_path, monkeypatch):
+        (tmp_path / "blog-validate.toml").write_text(
+            '[blog]\ncontent_path = "content/blog"\npost_file = "index.md"\n'
+        )
+        post_dir = tmp_path / "content" / "blog" / "prose-only"
+        post_dir.mkdir(parents=True)
+        (post_dir / "index.md").write_text("Just prose, no code.\n")
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["test-guide", "--all"])
+        assert result.exit_code == 0
+        assert "prose-only" not in result.output
+
+    def test_ollama_block_flags_missing_mock(self, tmp_path, monkeypatch):
+        (tmp_path / "blog-validate.toml").write_text(
+            '[blog]\ncontent_path = "content/blog"\npost_file = "index.md"\n'
+        )
+        post_dir = tmp_path / "content" / "blog" / "ollama-post"
+        post_dir.mkdir(parents=True)
+        (post_dir / "index.md").write_text(
+            "```python\nimport ollama\nollama.chat(model='x')\n```\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["test-guide", "--post", "ollama-post"])
+        assert result.exit_code == 0
+        assert "ollama_mock not loaded" in result.output
+
+
+class TestStatsCommand:
+    def test_no_blocks_reports_none_found(self, tmp_path, monkeypatch):
+        (tmp_path / "blog-validate.toml").write_text(
+            '[blog]\ncontent_path = "content/blog"\npost_file = "index.md"\n'
+        )
+        post_dir = tmp_path / "content" / "blog" / "prose-only"
+        post_dir.mkdir(parents=True)
+        (post_dir / "index.md").write_text("Just prose.\n")
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["stats"])
+        assert result.exit_code == 0
+        assert "No code blocks found" in result.output
+
+    def test_reports_language_distribution(self, blog_root, monkeypatch):
+        monkeypatch.chdir(blog_root)
+        result = runner.invoke(app, ["stats"])
+        assert result.exit_code == 0
+        assert "sql" in result.output
+        assert "Total: 1 blocks across 1 posts" in result.output
+
+    def test_multiple_languages_all_counted(self, tmp_path, monkeypatch):
+        (tmp_path / "blog-validate.toml").write_text(
+            '[blog]\ncontent_path = "content/blog"\npost_file = "index.md"\n'
+        )
+        post_dir = tmp_path / "content" / "blog" / "mixed"
+        post_dir.mkdir(parents=True)
+        (post_dir / "index.md").write_text(
+            "```sql\nSELECT 1\n```\n```python\nx = 1\n```\n```python\ny = 2\n```\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["stats"])
+        assert result.exit_code == 0
+        assert "Total: 3 blocks across 1 posts" in result.output
+
+
+class TestFindCommand:
+    def test_finds_posts_with_matching_language(self, blog_root, monkeypatch):
+        monkeypatch.chdir(blog_root)
+        result = runner.invoke(app, ["find", "sql"])
+        assert result.exit_code == 0
+        assert "my-post" in result.output
+        assert "Total: 1 posts, 1 blocks" in result.output
+
+    def test_case_insensitive_match(self, blog_root, monkeypatch):
+        monkeypatch.chdir(blog_root)
+        result = runner.invoke(app, ["find", "SQL"])
+        assert result.exit_code == 0
+        assert "my-post" in result.output
+
+    def test_no_matches_reports_none_found(self, blog_root, monkeypatch):
+        monkeypatch.chdir(blog_root)
+        result = runner.invoke(app, ["find", "rust"])
+        assert result.exit_code == 0
+        assert "No posts found" in result.output
+
+    def test_count_flag_shows_per_post_counts(self, tmp_path, monkeypatch):
+        (tmp_path / "blog-validate.toml").write_text(
+            '[blog]\ncontent_path = "content/blog"\npost_file = "index.md"\n'
+        )
+        post_dir = tmp_path / "content" / "blog" / "two-blocks"
+        post_dir.mkdir(parents=True)
+        (post_dir / "index.md").write_text("```python\nx = 1\n```\n```python\ny = 2\n```\n")
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["find", "python"])
+        assert result.exit_code == 0
+        assert "2 blocks" in result.output
+
+    def test_no_count_flag_hides_counts(self, blog_root, monkeypatch):
+        monkeypatch.chdir(blog_root)
+        result = runner.invoke(app, ["find", "sql", "--no-count"])
+        assert result.exit_code == 0
+        # Per-post line should be the bare slug, not "slug  N block(s)"
+        lines = [line for line in result.output.splitlines() if "my-post" in line]
+        assert lines == ["  my-post"]
+
+
 class TestCodePreview:
     def test_short_block_no_ellipsis(self):
         code = "SELECT 1\nSELECT 2"
