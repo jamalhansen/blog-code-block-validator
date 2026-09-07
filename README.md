@@ -91,25 +91,35 @@ blog-validate list-skips            # audit all skipped blocks
 ## Shared Fixtures
 
 Define a fixture once in any post:
-
-```markdown
-<!-- test:fixture name="customers-table" -->
-```sql
-CREATE TABLE customers (id INT, name VARCHAR);
-INSERT INTO customers VALUES (1, 'Alice'), (2, 'Bob');
-```
-```
-
-Reference it anywhere:
-
-```markdown
-<!-- test:use name="customers-table" -->
-```sql
-SELECT * FROM customers
-```
-```
-
+...
 When a fixture post changes, all posts that use its fixtures are automatically included in `--changed` validation.
+
+## Python Dependencies
+
+`blog-validate` supports blog posts that import external Python modules (e.g., `pytest`, `ollama`, `local-first-common`).
+
+1. **Local Virtual Environment**: If a `.venv` directory exists in your blog repo root, `blog-validate` will automatically include its `site-packages` in the Python search path. This allows you to use any modules installed in your project's environment.
+2. **Configuration**: You can declare required dependencies in `blog-validate.toml` to get warnings if they are missing from your environment:
+
+```toml
+[python]
+dependencies = ["pytest", "ollama", "local-first-common"]
+```
+
+## Bash Support
+
+`blog-validate` supports terminal snippets marked as `bash` or `sh`.
+
+- **Isolation**: Each post's bash commands run in a temporary directory. Files created during execution are automatically deleted.
+- **Syntax Check**: Uses `bash -n` to verify snippet syntax.
+- **Execution**: Runs commands via `subprocess.run(shell=True)`.
+
+## TOML & Markdown Support
+
+`blog-validate` supports linting and validation for `toml` and `markdown` blocks.
+
+- **TOML**: Uses Python's built-in `tomllib` to verify that snippets are well-formed.
+- **Markdown**: Uses `pymarkdownlnt` to lint snippets. It automatically ignores noisy rules for snippets (like line length and missing first-line headers).
 
 ## Helpers Directory
 

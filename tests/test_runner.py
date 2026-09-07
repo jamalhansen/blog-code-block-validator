@@ -1,6 +1,7 @@
+from unittest.mock import patch
 from blog_validate.extractor import PostBlocks
 from blog_validate.languages.base import AnnotationType, CodeBlock
-from blog_validate.runner import run_post, resolve_changed_posts
+from blog_validate.runner import run_post, resolve_changed_posts, get_changed_files
 
 
 def block(
@@ -131,7 +132,7 @@ class TestRunPost:
         assert all(r.status == "skipped" for r in result.results)
 
     def test_unknown_language_is_skipped(self):
-        post = PostBlocks(slug="test", blocks=[block("bash", "echo hello")])
+        post = PostBlocks(slug="test", blocks=[block("rust", "fn main() {}")])
         result = run_post(post, {})
         assert result.results[0].status == "skipped"
 
@@ -176,7 +177,7 @@ class TestRunPost:
         post = PostBlocks(
             slug="test",
             blocks=[block("sql", "SELECT COUNT(*) FROM widgets")],
-            needs=["widgets"],
+            needs=[("widgets", None)],
         )
         result = run_post(post, registry)
         assert result.passed
@@ -185,7 +186,7 @@ class TestRunPost:
         post = PostBlocks(
             slug="test",
             blocks=[block("sql", "SELECT 1")],
-            needs=["nonexistent-helper"],
+            needs=[("nonexistent-helper", None)],
         )
         result = run_post(post, {})
         assert result.passed
@@ -287,3 +288,67 @@ class TestResolveChangedPosts:
             [], [post], {}, tmp_path, "content/blog", "index.md"
         )
         assert result == []
+
+
+class TestHelperWarnings:
+    def test_failing_base_helper_emits_warning(self):
+        messages = []
+        bad_base = CodeBlock(
+            language="python",
+            code="raise Exception('boom')",
+            annotation=AnnotationType.FIXTURE,
+            fixture_name="bad",
+            post_slug="<helpers>",
+            block_index=0,
+        )
+        post = PostBlocks(slug="test", blocks=[block("python", "x = 1")])
+        run_post(post, {}, base_blocks=[bad_base], print_fn=messages.append)
+        assert any("WARNING" in m and "base helper" in m for m in messages)
+
+    def test_failing_needs_helper_emits_warning(self):
+        messages = []
+        bad_helper = CodeBlock(
+            language="python",
+            code="raise Exception('boom')",
+            annotation=AnnotationType.FIXTURE,
+            fixture_name="bad-setup",
+            post_slug="<helpers>",
+            block_index=0,
+        )
+        registry = {"bad-setup": bad_helper}
+        post = PostBlocks(
+            slug="test",
+            blocks=[block("python", "x = 1")],
+            needs=[("bad-setup", None)],
+        )
+        run_post(post, registry, print_fn=messages.append)
+        assert any("WARNING" in m and "bad-setup" in m for m in messages)
+
+
+class TestGetChangedFiles:
+    def test_includes_staged_and_unstaged(self, tmp_path):
+        def fake_run(args, **kwargs):
+            class R:
+                returncode = 0
+                stdout = "staged.md\n" if "--cached" in args else "unstaged.md\n"
+            return R()
+
+        with patch("blog_validate.runner.subprocess.run", side_effect=fake_run):
+            result = get_changed_files(tmp_path)
+
+        paths = {p.name for p in result}
+        assert "staged.md" in paths
+        assert "unstaged.md" in paths
+
+    def test_deduplicates_files_in_both(self, tmp_path):
+        def fake_run(args, **kwargs):
+            class R:
+                returncode = 0
+                stdout = "both.md\n"
+            return R()
+
+        with patch("blog_validate.runner.subprocess.run", side_effect=fake_run):
+            result = get_changed_files(tmp_path)
+
+        assert len(result) == 1
+        assert result[0].name == "both.md"

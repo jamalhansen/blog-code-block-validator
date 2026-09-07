@@ -32,3 +32,16 @@ def test_load_config_raises_if_not_found(tmp_path):
     isolated.mkdir(parents=True)
     with pytest.raises(FileNotFoundError, match="blog-validate.toml not found"):
         load_config(isolated)
+
+
+def test_load_config_invalid_layout_raises(tmp_path):
+    (tmp_path / "blog-validate.toml").write_text('[blog]\nlayout = "typo"\n')
+    with pytest.raises(ValueError, match="Invalid layout"):
+        load_config(tmp_path)
+
+
+def test_load_config_valid_layouts(tmp_path):
+    for layout in ("bundle", "flat", "vault"):
+        (tmp_path / "blog-validate.toml").write_text(f'[blog]\nlayout = "{layout}"\n')
+        config = load_config(tmp_path)
+        assert config.blog.layout == layout

@@ -1,0 +1,7 @@
+# Configuration for validating BrainSync newsletter patterns.
+# Previously lived in ~/projects/newsletter-pattern-validator/blog-validate.toml.
+# Run via: make validate-newsletter
+
+[blog]
+content_path = "~/vaults/BrainSync/newsletter/patterns"
+layout = "flat"

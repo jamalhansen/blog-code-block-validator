@@ -15,8 +15,8 @@ def test_skip_annotation_survives_bridge(tmp_path):
     
     os.chdir(vault_root)
     result = runner.invoke(app, ["check", "--all"])
-    assert "skipped=1" in result.stdout
-    
+    assert "1–" in result.stdout
+
     hugo_root = tmp_path / "hugo"
     hugo_root.mkdir()
     (hugo_root / "blog-validate.toml").write_text("[blog]\nlayout='bundle'\ncontent_path='content/blog'")
@@ -26,7 +26,7 @@ def test_skip_annotation_survives_bridge(tmp_path):
     
     os.chdir(hugo_root)
     result = runner.invoke(app, ["check", "--all"])
-    assert "skipped=1" in result.stdout
+    assert "1–" in result.stdout
 
 def test_expected_failure_survives_bridge(tmp_path):
     content = "<!-- test:expected-failure -->\n```python\n1/0\n```"
@@ -40,8 +40,9 @@ def test_expected_failure_survives_bridge(tmp_path):
     
     os.chdir(vault_root)
     result = runner.invoke(app, ["check", "--all"])
-    assert "[PASS] ef-post" in result.stdout
-    
+    assert "ef-post" in result.stdout
+    assert "PASS" in result.stdout
+
     hugo_root = tmp_path / "hugo_ef"
     hugo_root.mkdir()
     (hugo_root / "blog-validate.toml").write_text("[blog]\nlayout='bundle'\ncontent_path='content/blog'")
@@ -51,4 +52,5 @@ def test_expected_failure_survives_bridge(tmp_path):
     
     os.chdir(hugo_root)
     result = runner.invoke(app, ["check", "--all"])
-    assert "[PASS] ef-post" in result.stdout
+    assert "ef-post" in result.stdout
+    assert "PASS" in result.stdout

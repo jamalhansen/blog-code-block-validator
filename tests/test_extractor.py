@@ -278,7 +278,7 @@ class TestNeedsParsing:
             "<!-- test:needs: customers, orders -->\n\n```sql\nSELECT 1\n```\n"
         )
         posts = scan_posts(tmp_path, "content/blog", "index.md")
-        assert posts[0].needs == ["customers", "orders"]
+        assert posts[0].needs == [("customers", None), ("orders", None)]
 
     def test_post_with_no_needs_has_empty_list(self, tmp_path):
         (tmp_path / "blog-validate.toml").write_text(

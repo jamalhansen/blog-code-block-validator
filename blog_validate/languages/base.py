@@ -29,10 +29,23 @@ class CodeBlock:
 class ExecutionContext:
     conn: Any  # duckdb.DuckDBPyConnection
     py_globals: dict = field(default_factory=dict)
+    last_stdout: str | None = None  # set by validators that capture stdout (e.g. python)
 
 
 class ValidationError(Exception):
-    pass
+    def __init__(
+        self,
+        message: str,
+        detail: str | None = None,
+        stdout: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.message = message
+        self.detail = detail  # e.g. "Left: X\nRight: Y" for assertion failures
+        self.stdout = stdout  # captured stdout from exec, if any
+
+    def __str__(self) -> str:
+        return self.message
 
 
 class Validator(ABC):

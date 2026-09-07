@@ -38,4 +38,4 @@ def test_vault_check_runs_sql_blocks(obsidian_vault_factory):
     result = runner.invoke(app, ["check", "--all"])
     assert result.exit_code == 0
     assert "01-intro" in result.stdout
-    assert "[PASS]" in result.stdout
+    assert "PASS" in result.stdout

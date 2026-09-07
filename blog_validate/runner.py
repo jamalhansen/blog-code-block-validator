@@ -1,6 +1,11 @@
-from dataclasses import dataclass
+import os
+import re
+import subprocess
+import tempfile
 from pathlib import Path
+from dataclasses import dataclass
 from typing import Callable
+from blog_validate.config import resolve_content_root
 from blog_validate.extractor import FixtureRegistry, PostBlocks
 from blog_validate.languages import VALIDATORS, make_context
 from blog_validate.languages.base import (
@@ -17,6 +22,27 @@ class BlockResult:
     block: CodeBlock
     status: str  # "passed", "failed", "skipped"
     error: str | None = None
+    detail: str | None = None  # assertion left/right values
+    hint: str | None = None   # actionable fix suggestion
+    stdout: str | None = None  # captured stdout from exec
+
+
+def _make_hint(error: str, code: str, prev_block_failed: bool) -> str | None:
+    """Return an actionable suggestion for common failure patterns."""
+    if "No module named 'ollama'" in error:
+        return "Add  <!-- test:needs: ollama_mock -->  before this block to mock ollama"
+    if "NameError" in error and prev_block_failed:
+        m = re.search(r"NameError: name '(\w+)' is not defined", error)
+        name = f" '{m.group(1)}'" if m else ""
+        return f"A previous block failed -- {name} was never defined. Fix the earlier failure first."
+    if "invalid literal for int()" in error and "ollama" in code:
+        return (
+            "Real LLM output was returned instead of a number. "
+            "Add  <!-- test:needs: ollama_mock -->  to mock ollama calls"
+        )
+    if "FileNotFoundError" in error:
+        return "Use  <!-- test:setup -->  to create the file, or mock open() in a setup block"
+    return None
 
 
 @dataclass
@@ -41,6 +67,18 @@ class PostResult:
         return sum(1 for r in self.results if r.status == "skipped")
 
 
+def _failed(block: CodeBlock, e: ValidationError, prev_block_failed: bool = False) -> BlockResult:
+    """Build a failed BlockResult from a ValidationError with hints."""
+    return BlockResult(
+        block=block,
+        status="failed",
+        error=str(e),
+        detail=e.detail,
+        hint=_make_hint(str(e), block.code, prev_block_failed),
+        stdout=e.stdout,
+    )
+
+
 def _run_block(
     block: CodeBlock,
     ctx: ExecutionContext,
@@ -48,6 +86,7 @@ def _run_block(
     dry_run: bool,
     verbose: bool,
     print_fn: Callable[[str], None] = print,
+    prev_block_failed: bool = False,
 ) -> BlockResult:
     if dry_run:
         return BlockResult(block=block, status="skipped", error="dry-run")
@@ -58,6 +97,7 @@ def _run_block(
         )
 
     annotation = block.annotation
+    ctx.last_stdout = None
 
     if annotation == AnnotationType.SKIP:
         return BlockResult(block=block, status="skipped")
@@ -101,7 +141,7 @@ def _run_block(
             validator.syntax_check(block.code)
             return BlockResult(block=block, status="passed")
         except ValidationError as e:
-            return BlockResult(block=block, status="failed", error=str(e))
+            return _failed(block, e, prev_block_failed)
 
     if annotation == AnnotationType.EXPECTED_FAILURE:
         try:
@@ -120,20 +160,20 @@ def _run_block(
                 validator.execute_assert(block.code, ctx)
                 return BlockResult(block=block, status="passed")
             except ValidationError as e:
-                return BlockResult(block=block, status="failed", error=str(e))
+                return _failed(block, e, prev_block_failed)
         else:
             try:
                 validator.execute(block.code, ctx)
-                return BlockResult(block=block, status="passed")
+                return BlockResult(block=block, status="passed", stdout=ctx.last_stdout)
             except ValidationError as e:
-                return BlockResult(block=block, status="failed", error=str(e))
+                return _failed(block, e, prev_block_failed)
 
     # DEFAULT and SETUP: execute, fail on any error
     try:
         validator.execute(block.code, ctx)
-        return BlockResult(block=block, status="passed")
+        return BlockResult(block=block, status="passed", stdout=ctx.last_stdout)
     except ValidationError as e:
-        return BlockResult(block=block, status="failed", error=str(e))
+        return _failed(block, e, prev_block_failed)
 
 
 def run_post(
@@ -145,32 +185,58 @@ def run_post(
     print_fn: Callable[[str], None] = print,
 ) -> PostResult:
     ctx = make_context()
+    original_cwd = os.getcwd()
+
+    # Use a hidden parent dir so VS Code doesn't open the temp dir as a workspace
+    _tmp_parent = Path(tempfile.gettempdir()) / ".blog-validate"
+    _tmp_parent.mkdir(exist_ok=True)
 
     if not dry_run:
-        # Auto-run helpers (files prefixed with _ in blog-validate-helpers/)
-        for base in base_blocks or []:
-            validator = VALIDATORS.get(base.language)
-            if validator:
-                try:
-                    validator.execute(base.code, ctx)
-                except ValidationError:
-                    pass
+        with tempfile.TemporaryDirectory(prefix=f"{post.slug}-", dir=_tmp_parent) as tmp_dir:
+            os.chdir(tmp_dir)
+            try:
+                # Auto-run helpers (files prefixed with _ in blog-validate-helpers/)
+                for base in base_blocks or []:
+                    validator = VALIDATORS.get(base.language)
+                    if validator:
+                        try:
+                            validator.execute(base.code, ctx)
+                        except ValidationError as e:
+                            print_fn(f"  WARNING: base helper ({base.language}) setup failed: {e}")
 
-        # Execute named helpers declared via <!-- test:needs: name1, name2 -->
-        for name in post.needs:
-            helper = fixture_registry.get(name)
-            if helper:
-                validator = VALIDATORS.get(helper.language)
-                if validator:
-                    try:
-                        validator.execute(helper.code, ctx)
-                    except ValidationError:
-                        pass
+                # Execute named helpers declared via <!-- test:needs: name1, name2 -->
+                for name, param in post.needs:
+                    helper = fixture_registry.get(name)
+                    if helper:
+                        validator = VALIDATORS.get(helper.language)
+                        if validator:
+                            try:
+                                if param is not None:
+                                    ctx.py_globals["_needs_param"] = param
+                                validator.execute(helper.code, ctx)
+                            except ValidationError as e:
+                                print_fn(f"  WARNING: helper '{name}' setup failed: {e}")
+                            finally:
+                                ctx.py_globals.pop("_needs_param", None)
 
-    results = [
-        _run_block(b, ctx, fixture_registry, dry_run, verbose, print_fn)
-        for b in post.blocks
-    ]
+                results = []
+                prev_failed = False
+                for b in post.blocks:
+                    r = _run_block(b, ctx, fixture_registry, dry_run, verbose, print_fn, prev_failed)
+                    results.append(r)
+                    if r.status == "failed":
+                        prev_failed = True
+            finally:
+                os.chdir(original_cwd)
+    else:
+        results = []
+        prev_failed = False
+        for b in post.blocks:
+            r = _run_block(b, ctx, fixture_registry, dry_run, verbose, print_fn, prev_failed)
+            results.append(r)
+            if r.status == "failed":
+                prev_failed = True
+
     return PostResult(slug=post.slug, results=results)
 
 
@@ -183,7 +249,7 @@ def resolve_changed_posts(
     post_file: str,
     layout: str = "bundle",
 ) -> list[PostBlocks]:
-    blog_root = repo_root / content_path
+    blog_root = resolve_content_root(repo_root, content_path)
 
     # Map slug -> PostBlocks for quick lookup
     slug_map = {p.slug: p for p in all_posts}
@@ -236,14 +302,17 @@ def resolve_changed_posts(
 
 
 def get_changed_files(blog_root: Path) -> list[Path]:
-    import subprocess
-
-    result = subprocess.run(
-        ["git", "diff", "--cached", "--name-only"],
-        capture_output=True,
-        text=True,
-        cwd=blog_root,
-    )
-    if result.returncode != 0:
-        return []
-    return [Path(line) for line in result.stdout.splitlines() if line]
+    paths: set[str] = set()
+    for args in (
+        ["git", "diff", "--cached", "--name-only"],   # staged
+        ["git", "diff", "--name-only"],                # unstaged
+    ):
+        result = subprocess.run(
+            args,
+            capture_output=True,
+            text=True,
+            cwd=blog_root,
+        )
+        if result.returncode == 0:
+            paths.update(line for line in result.stdout.splitlines() if line)
+    return [Path(p) for p in sorted(paths)]

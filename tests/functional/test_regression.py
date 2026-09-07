@@ -37,4 +37,4 @@ def test_ollama_inline_script_skipped(tmp_path):
     os.chdir(blog_root)
     result = runner.invoke(app, ["check", "--all"])
     assert result.exit_code == 0
-    assert "skipped=1" in result.stdout
+    assert "1–" in result.stdout

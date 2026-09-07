@@ -10,3 +10,18 @@
 - Resolved "hanging" issue during real-world validation: Identified `input()` calls in unannotated code blocks as the cause of pauses during `check --all`.
 - Recommended `<!-- test:skip -->` annotations for blocks with `input()` to prevent interactive hangs in non-interactive environments.
 - Wired up pre-commit hooks in `~/projects/jamalhansen.com` to prevent regressions.
+
+## 2026-04-16
+- Implemented automatic `.venv` detection: `blog-validate` now adds the blog root's `.venv/lib/python*/site-packages` to `sys.path` during validation.
+- Added support for `[python] dependencies` in `blog-validate.toml` to provide warnings for missing external modules.
+- Created `blog_validate/env.py` to handle environment setup and dependency checking.
+- Documented Python dependency management in `README.md`.
+- Added functional tests for `.venv` discovery and dependency warnings.
+
+- Implemented execution isolation: Each post now runs in a disposable temporary directory to prevent test artifacts (like .duckdb files or reports/) from polluting the workspace.
+- Added Bash support: Implemented BashValidator for terminal snippets (bash/sh), including isolation and syntax checking via 'bash -n'.
+- Silenced Python output: Captured and suppressed stdout/stderr during Python execution for cleaner validation reports.
+- Synced Vault and Hugo: Applied all environmental improvements (helpers, .venv, skipping) to both drafting and publishing repositories.
+
+- Implemented TOML validation: Added TomlValidator using built-in tomllib to verify well-formedness of TOML snippets.
+- Implemented Markdown linting: Added MarkdownValidator using pymarkdownlnt to lint Markdown snippets, with automated rule suppression for snippet-specific noise.

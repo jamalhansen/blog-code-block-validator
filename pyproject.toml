@@ -1,12 +1,15 @@
 [project]
 name = "blog-code-block-validator"
-version = "0.1.0"
+version = "0.1.5"
 description = "Validate code blocks in Hugo blog posts"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "duckdb>=1.5.1",
     "typer>=0.24.1",
+    "ollama>=0.6.1",
+    "pyyaml>=6.0.3",
+    "pymarkdownlnt>=0.9.36",
 ]
 
 [project.scripts]

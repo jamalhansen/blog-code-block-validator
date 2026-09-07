@@ -1,20 +1,21 @@
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from blog_validate.config import resolve_content_root
 from blog_validate.languages.base import AnnotationType, CodeBlock
 
 ANNOTATION_RE = re.compile(r'^<!-- test:([\w-]+)(?:\s+name="([^"]+)")?\s*-->$')
 NEEDS_RE = re.compile(r"^<!-- test:needs:\s*([^>]+?)\s*-->$")
 FixtureRegistry = dict[str, CodeBlock]
 
-_LANG_BY_EXT: dict[str, str] = {".sql": "sql", ".py": "python"}
+_LANG_BY_EXT: dict[str, str] = {".sql": "sql", ".py": "python", ".sh": "bash"}
 
 
 @dataclass
 class PostBlocks:
     slug: str
     blocks: list[CodeBlock]
-    needs: list[str] = field(default_factory=list)
+    needs: list[tuple[str, str | None]] = field(default_factory=list)
 
 
 def parse_annotation(line: str) -> tuple[AnnotationType, str | None] | None:
@@ -36,14 +37,26 @@ def parse_annotation(line: str) -> tuple[AnnotationType, str | None] | None:
     return annotation, m.group(2)
 
 
-def _parse_needs(content: str) -> list[str]:
-    """Collect all <!-- test:needs: name1, name2 --> declarations in the file."""
-    names: list[str] = []
+def _parse_needs(content: str) -> list[tuple[str, str | None]]:
+    """Collect all <!-- test:needs: name --> declarations in the file.
+
+    Each entry is (fixture_name, param) where param comes from the
+    ``fixture:param`` syntax, e.g. ``ollama_mock:custom response``.
+    """
+    entries: list[tuple[str, str | None]] = []
     for line in content.split("\n"):
         m = NEEDS_RE.match(line.strip())
         if m:
-            names.extend(n.strip() for n in m.group(1).split(",") if n.strip())
-    return names
+            for raw in m.group(1).split(","):
+                raw = raw.strip()
+                if not raw:
+                    continue
+                if ":" in raw:
+                    name, param = raw.split(":", 1)
+                    entries.append((name.strip(), param.strip()))
+                else:
+                    entries.append((raw, None))
+    return entries
 
 
 def extract_blocks(content: str, slug: str) -> list[CodeBlock]:
@@ -131,7 +144,7 @@ def scan_posts(
     exclude_patterns: list[str] | None = None,
 ) -> list[PostBlocks]:
     """Scan all posts and extract their code blocks."""
-    posts_dir = blog_root / content_path
+    posts_dir = resolve_content_root(blog_root, content_path)
     if not posts_dir.exists():
         return []
 
@@ -191,14 +204,15 @@ def scan_posts(
 
 def scan_helpers_dir(
     blog_root: Path,
+    helpers_path: str = "blog-validate-helpers",
 ) -> tuple[list[CodeBlock], FixtureRegistry]:
-    """Scan blog-validate-helpers/ for named helper files.
+    """Scan the helpers directory for named helper files.
 
     Returns:
         base_blocks: files whose names start with '_' — auto-run before every post
         named: all other files, registered by filename stem for opt-in via test:needs
     """
-    helpers_dir = blog_root / "blog-validate-helpers"
+    helpers_dir = (blog_root / helpers_path).resolve()
     base_blocks: list[CodeBlock] = []
     named: FixtureRegistry = {}
 
