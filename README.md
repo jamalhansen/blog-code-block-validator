@@ -76,6 +76,10 @@ blog-validate check --post <slug>
 blog-validate list-fixtures
 blog-validate list-posts
 blog-validate list-skips            # audit all skipped blocks
+blog-validate test-guide --post <slug>   # testing checklist, no execution
+blog-validate test-guide --all
+blog-validate stats                      # block count by language across all posts
+blog-validate find <language>            # posts containing blocks of a given language
 ```
 
 **Flags for `check`:**
@@ -87,6 +91,14 @@ blog-validate list-skips            # audit all skipped blocks
 | `--post <slug>` | | Validate a single post by slug |
 | `--verbose` | `-v` | Show per-block pass/fail detail |
 | `--dry-run` | `-n` | Skip execution, report all as skipped |
+| `--config <path>` | | Load an alternate `blog-validate.toml` instead of walking up from cwd (e.g. for validating a config outside the current repo) |
+
+```bash
+# Validate a source outside this repo, e.g. newsletter patterns
+blog-validate check --all --config configs/newsletter.toml
+# same thing via the Makefile
+make validate-newsletter
+```
 
 ## Shared Fixtures
 
