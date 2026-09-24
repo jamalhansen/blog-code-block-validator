@@ -32,6 +32,10 @@ blog/posts/2026/04/<slug>/... or <slug>.md                # same two shapes, dat
 
 Notes without a `posts/` ancestor (series index notes, `ideas/`, `brainstorm/`, planning docs) are never treated as posts, so their code is never executed. `exclude_patterns = ["promo.md"]` drops companion files inside a bundle.
 
+**Skipping by status.** `skip_statuses = ["dropped", "outline"]` in `[blog]` leaves posts with that frontmatter `status` out of `check` and `coverage`; they're counted in the output (`posts_skipped_by_status` in `--json`) rather than silently dropped. `check --post <slug>` still runs a single post whatever its status.
+
+**Bash safety.** Bash blocks run with `HOME` pointed at the per-post temp dir, so `~/...` paths can't touch your real home. For targets that run unattended over unreviewed drafts, set `[bash] execute = false` to syntax-check bash without running it (`configs/vault.toml` does this).
+
 This repo validates three targets: the blog (its own `blog-validate.toml` + pre-commit hook), the vault drafts (`configs/vault.toml`) and the newsletter patterns (`configs/newsletter.toml`). `make validate-all` runs all three.
 
 Install the pre-commit hook:

@@ -10,11 +10,23 @@ class BlogConfig:
     layout: str = "bundle"  # "bundle", "flat", or "vault"
     exclude_patterns: list[str] = field(default_factory=list)
     helpers_path: str = "blog-validate-helpers"
+    # Posts whose frontmatter `status` is in this list are not executed, e.g.
+    # ["dropped", "outline"] for vault drafts: an outline's code is a sketch
+    # and a dropped post's code is never going to be fixed.
+    skip_statuses: list[str] = field(default_factory=list)
 
 
 @dataclass
 class SqlConfig:
     backend: str = "duckdb"
+
+
+@dataclass
+class BashConfig:
+    # false = syntax-check bash blocks only. Unreviewed drafts contain
+    # commands like `brew install`, `mkdir ~/bin` and git history rewrites
+    # that must never run unattended on the author's machine.
+    execute: bool = True
 
 
 @dataclass
@@ -33,6 +45,7 @@ class Config:
     sql: SqlConfig
     python: PythonConfig
     root: Path
+    bash: BashConfig = field(default_factory=BashConfig)
 
 
 def resolve_content_root(blog_root: Path, content_path: str) -> Path:
@@ -49,6 +62,7 @@ def _build_config(toml_path: Path, root: Path) -> Config:
         sql=SqlConfig(**data.get("sql", {})),
         python=PythonConfig(**data.get("python", {})),
         root=root,
+        bash=BashConfig(**data.get("bash", {})),
     )
     valid_layouts = {"bundle", "flat", "vault"}
     if config.blog.layout not in valid_layouts:

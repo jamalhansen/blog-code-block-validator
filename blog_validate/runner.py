@@ -183,8 +183,10 @@ def run_post(
     dry_run: bool = False,
     verbose: bool = False,
     print_fn: Callable[[str], None] = print,
+    bash_execute: bool = True,
 ) -> PostResult:
     ctx = make_context()
+    ctx.bash_execute = bash_execute
     original_cwd = os.getcwd()
 
     # Use a hidden parent dir so VS Code doesn't open the temp dir as a workspace

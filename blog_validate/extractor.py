@@ -11,11 +11,24 @@ FixtureRegistry = dict[str, CodeBlock]
 _LANG_BY_EXT: dict[str, str] = {".sql": "sql", ".py": "python", ".sh": "bash"}
 
 
+STATUS_RE = re.compile(r"^---\n.*?^status:\s*['\"]?([\w-]+)", re.DOTALL | re.MULTILINE)
+
+
 @dataclass
 class PostBlocks:
     slug: str
     blocks: list[CodeBlock]
     needs: list[tuple[str, str | None]] = field(default_factory=list)
+    status: str | None = None
+
+
+def _parse_status(content: str) -> str | None:
+    """The frontmatter `status` value, if the file starts with frontmatter that has one."""
+    end = content.find("\n---", 4) if content.startswith("---\n") else -1
+    if end == -1:
+        return None
+    m = STATUS_RE.match(content[: end + 1])
+    return m.group(1) if m else None
 
 
 def parse_annotation(line: str) -> tuple[AnnotationType, str | None] | None:
@@ -165,7 +178,9 @@ def scan_posts(
             slug = path.stem
             blocks = extract_blocks(content, slug)
             needs = _parse_needs(content)
-            results.append(PostBlocks(slug=slug, blocks=blocks, needs=needs))
+            results.append(
+                PostBlocks(slug=slug, blocks=blocks, needs=needs, status=_parse_status(content))
+            )
     elif layout == "vault":
         # Vault layout. A post is any .md under a `posts/` directory, in either
         # of the two shapes the vault uses (optionally nested under
@@ -196,7 +211,9 @@ def scan_posts(
                 content = path.read_text()
                 blocks = extract_blocks(content, slug)
                 needs = _parse_needs(content)
-                results.append(PostBlocks(slug=slug, blocks=blocks, needs=needs))
+                results.append(
+                PostBlocks(slug=slug, blocks=blocks, needs=needs, status=_parse_status(content))
+            )
     else:
         # Default bundle layout: each post is a directory with a specific post_file
         # We use rglob to find all instances of post_file (e.g. index.md) at any depth
@@ -208,7 +225,9 @@ def scan_posts(
             slug = path.parent.name
             blocks = extract_blocks(content, slug)
             needs = _parse_needs(content)
-            results.append(PostBlocks(slug=slug, blocks=blocks, needs=needs))
+            results.append(
+                PostBlocks(slug=slug, blocks=blocks, needs=needs, status=_parse_status(content))
+            )
 
     return results
 

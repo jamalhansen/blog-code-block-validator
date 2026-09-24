@@ -1,3 +1,4 @@
+import json
 import os
 from typer.testing import CliRunner
 from blog_validate.main import app
@@ -73,6 +74,47 @@ def test_notes_without_a_posts_ancestor_are_not_posts(obsidian_vault_factory):
     assert result.exit_code == 0
     for not_a_post in ("sql-series:", "ideas:", "Some Idea", "blog:", "content-strategy-plan"):
         assert not_a_post not in result.stdout
+
+
+def _vault_with_statuses(vault_root):
+    posts = vault_root / "blog" / "series" / "sql-series" / "posts"
+    (posts / "03-dropped.md").write_text("---\nstatus: dropped\n---\n```python\n1/0\n```")
+    (posts / "04-outline.md").write_text("---\ntitle: X\nstatus: 'outline'\n---\n```python\n1/0\n```")
+    (posts / "05-draft.md").write_text("---\nstatus: draft\n---\n```python\nassert True\n```")
+    with (vault_root / "blog-validate.toml").open("a") as f:
+        f.write('skip_statuses = ["dropped", "outline"]\n')
+    return vault_root
+
+
+def test_skip_statuses_are_not_run_but_are_reported(obsidian_vault_factory):
+    vault_root = _vault_with_statuses(obsidian_vault_factory())
+    os.chdir(vault_root)
+
+    result = runner.invoke(app, ["check", "--all", "--json"])
+    assert result.exit_code == 0
+    data = json.loads(result.stdout)
+    ran = {p["slug"] for p in data["posts"]}
+    assert "05-draft" in ran
+    assert "03-dropped" not in ran and "04-outline" not in ran
+    assert data["summary"]["posts_skipped_by_status"] == 2
+    assert {"slug": "04-outline", "status": "outline"} in data["skipped_by_status"]
+
+
+def test_skip_statuses_apply_to_coverage(obsidian_vault_factory):
+    vault_root = _vault_with_statuses(obsidian_vault_factory())
+    os.chdir(vault_root)
+
+    data = json.loads(runner.invoke(app, ["coverage", "--json"]).stdout)
+    assert data["posts_skipped_by_status"] == 2
+
+
+def test_explicit_post_runs_regardless_of_status(obsidian_vault_factory):
+    vault_root = _vault_with_statuses(obsidian_vault_factory())
+    os.chdir(vault_root)
+
+    result = runner.invoke(app, ["check", "--post", "03-dropped"])
+    assert result.exit_code == 1
+    assert "03-dropped" in result.stdout
 
 
 def test_dated_posts_tree_supports_both_shapes(obsidian_vault_factory):

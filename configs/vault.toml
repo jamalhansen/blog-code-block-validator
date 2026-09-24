@@ -10,6 +10,10 @@ content_path = "~/vaults/BrainSync/blog"
 layout = "vault"
 exclude_patterns = ["promo.md"]
 helpers_path = "~/projects/jamalhansen.com/blog-validate-helpers"
+# Outlines hold sketch code and dropped posts will never be fixed; only
+# drafts and published posts are expected to run. `--post <slug>` still runs
+# any single post regardless of status.
+skip_statuses = ["dropped", "outline", "idea", "brainstorm"]
 
 [sql]
 backend = "duckdb"
@@ -17,3 +21,9 @@ backend = "duckdb"
 [python]
 venv = "~/projects/jamalhansen.com/.venv"
 dependencies = ["pytest", "ollama", "local-first-common", "pandas", "numpy", "faker"]
+
+[bash]
+# Syntax-check only. This target runs unattended every Sunday via launchd, and
+# drafts contain `brew install`, `mkdir ~/bin`, `ollama serve` and git
+# history rewrites that must never actually execute on this machine.
+execute = false

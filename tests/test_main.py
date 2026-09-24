@@ -81,6 +81,7 @@ class TestCheckCommand:
         assert data["summary"] == {
             "posts": 1, "posts_passed": 1, "posts_failed": 0,
             "blocks_passed": 1, "blocks_failed": 0, "blocks_skipped": 0,
+            "posts_skipped_by_status": 0,
         }
         assert data["posts"][0]["slug"] == "my-post"
         assert data["posts"][0]["blocks"][0]["language"] == "sql"

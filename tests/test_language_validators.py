@@ -17,6 +17,27 @@ class TestBashValidator:
         v = BashValidator()
         v.execute("echo hello", ctx)  # should not raise
 
+    def test_home_is_the_isolated_cwd_not_the_real_home(self, ctx, tmp_path, monkeypatch):
+        """`mkdir ~/bin` in a post must land in the throwaway dir, never the author's home."""
+        real_home = tmp_path / "real-home"
+        real_home.mkdir()
+        sandbox = tmp_path / "sandbox"
+        sandbox.mkdir()
+        monkeypatch.setenv("HOME", str(real_home))
+        monkeypatch.chdir(sandbox)
+        BashValidator().execute("mkdir ~/bin", ctx)
+        assert (sandbox / "bin").is_dir()
+        assert not (real_home / "bin").exists()
+
+    def test_execute_false_only_checks_syntax(self, ctx, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        ctx.bash_execute = False
+        v = BashValidator()
+        v.execute("touch should-not-exist && exit 1", ctx)  # valid syntax: passes, never runs
+        assert not (tmp_path / "should-not-exist").exists()
+        with pytest.raises(ValidationError, match="syntax error"):
+            v.execute("if then fi (", ctx)
+
     def test_execute_raises_on_failure(self, ctx):
         v = BashValidator()
         with pytest.raises(ValidationError, match="exit code"):

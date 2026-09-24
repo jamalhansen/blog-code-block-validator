@@ -52,6 +52,22 @@ def test_load_config_python_venv_defaults_to_none(tmp_path):
     assert load_config(tmp_path).python.venv is None
 
 
+def test_load_config_bash_and_status_defaults(tmp_path):
+    (tmp_path / "blog-validate.toml").write_text("")
+    config = load_config(tmp_path)
+    assert config.bash.execute is True
+    assert config.blog.skip_statuses == []
+
+
+def test_load_config_reads_bash_and_skip_statuses(tmp_path):
+    (tmp_path / "blog-validate.toml").write_text(
+        '[blog]\nskip_statuses = ["dropped"]\n[bash]\nexecute = false\n'
+    )
+    config = load_config(tmp_path)
+    assert config.bash.execute is False
+    assert config.blog.skip_statuses == ["dropped"]
+
+
 def test_load_config_reads_python_venv(tmp_path):
     (tmp_path / "blog-validate.toml").write_text('[python]\nvenv = "~/projects/blog/.venv"\n')
     assert load_config(tmp_path).python.venv == "~/projects/blog/.venv"

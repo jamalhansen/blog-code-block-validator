@@ -1,3 +1,4 @@
+import os
 import subprocess
 from blog_validate.languages.base import ExecutionContext, ValidationError, Validator
 
@@ -14,10 +15,16 @@ class BashValidator(Validator):
             raise ValidationError(f"Bash syntax error: {result.stderr}")
 
     def execute(self, code: str, context: ExecutionContext) -> None:
-        # Runs in the isolated temp dir provided by the runner
+        if not context.bash_execute:
+            self.syntax_check(code)
+            return
+        # Runs in the isolated temp dir provided by the runner. HOME points
+        # there too: the cwd alone doesn't stop `mkdir ~/bin` or `>> ~/.zshrc`
+        # from reaching the real home directory.
+        env = {**os.environ, "HOME": os.getcwd()}
         try:
             subprocess.run(
-                code, shell=True, capture_output=True, text=True, check=True
+                code, shell=True, capture_output=True, text=True, check=True, env=env
             )
         except subprocess.CalledProcessError as e:
             output = e.stderr or e.stdout

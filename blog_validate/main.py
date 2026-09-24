@@ -8,7 +8,7 @@ from rich.table import Table
 from rich import box
 from blog_validate.config import load_config, resolve_content_root
 from blog_validate.env import setup_environment
-from blog_validate.extractor import scan_posts, build_fixture_registry, scan_helpers_dir
+from blog_validate.extractor import PostBlocks, scan_posts, build_fixture_registry, scan_helpers_dir
 from blog_validate.languages.base import AnnotationType
 from blog_validate.runner import (
     PostResult,
@@ -205,11 +205,16 @@ def check(
             typer.echo(f"Error: post {post!r} not found", err=True)
             raise typer.Exit(code=1)
 
+    # --post names one post explicitly, so it runs whatever its status.
+    skipped_by_status: list[PostBlocks] = []
+    if not post:
+        posts_to_check, skipped_by_status = _split_by_status(posts_to_check, config.blog.skip_statuses)
+
     content_root = resolve_content_root(config.root, config.blog.content_path)
 
     if not posts_to_check:
         if as_json:
-            typer.echo(json.dumps(_results_payload([], content_root), indent=2))
+            typer.echo(json.dumps(_results_payload([], content_root, skipped_by_status), indent=2))
         else:
             typer.echo("No posts to validate.")
         raise typer.Exit(code=0)
@@ -225,24 +230,46 @@ def check(
             dry_run=dry_run,
             verbose=verbose,
             print_fn=print_fn,
+            bash_execute=config.bash.execute,
         )
         for p in posts_to_check
     ]
 
     if as_json:
-        typer.echo(json.dumps(_results_payload(results, content_root), indent=2))
+        typer.echo(json.dumps(_results_payload(results, content_root, skipped_by_status), indent=2))
         any_failed = any(not r.passed for r in results)
     else:
         any_failed = _print_results(results, verbose)
         passed = sum(1 for r in results if r.passed)
         typer.echo(f"\nDone. {passed}/{len(results)} posts passed.")
+        if skipped_by_status:
+            typer.echo(f"Not run (status {_status_breakdown(skipped_by_status)}): {len(skipped_by_status)} posts.")
 
     if any_failed:
         raise typer.Exit(code=1)
 
 
-def _results_payload(results: list[PostResult], content_root: Path) -> dict:
+def _split_by_status(posts: list[PostBlocks], skip_statuses: list[str]) -> tuple[list[PostBlocks], list[PostBlocks]]:
+    """Split posts into (to run, skipped because their frontmatter status is in skip_statuses)."""
+    skip = set(skip_statuses)
+    return (
+        [p for p in posts if p.status not in skip],
+        [p for p in posts if p.status in skip],
+    )
+
+
+def _status_breakdown(posts: list[PostBlocks]) -> str:
+    counts: dict[str, int] = {}
+    for p in posts:
+        counts[p.status] = counts.get(p.status, 0) + 1
+    return ", ".join(f"{s}: {n}" for s, n in sorted(counts.items()))
+
+
+def _results_payload(
+    results: list[PostResult], content_root: Path, skipped_by_status: list[PostBlocks] | None = None
+) -> dict:
     """Shape `check` results for --json: one entry per post, every block's status."""
+    skipped_by_status = skipped_by_status or []
     return {
         "content_root": str(content_root),
         "summary": {
@@ -252,7 +279,9 @@ def _results_payload(results: list[PostResult], content_root: Path) -> dict:
             "blocks_passed": sum(r.passed_count for r in results),
             "blocks_failed": sum(r.failed_count for r in results),
             "blocks_skipped": sum(r.skipped_count for r in results),
+            "posts_skipped_by_status": len(skipped_by_status),
         },
+        "skipped_by_status": [{"slug": p.slug, "status": p.status} for p in skipped_by_status],
         "posts": [
             {
                 "slug": pr.slug,
@@ -304,7 +333,9 @@ def coverage(
         config.blog.layout,
         config.blog.exclude_patterns,
     )
+    all_post_blocks, skipped_by_status = _split_by_status(all_post_blocks, config.blog.skip_statuses)
     cov = _coverage_summary(all_post_blocks)
+    cov["posts_skipped_by_status"] = len(skipped_by_status)
 
     if as_json:
         cov["content_root"] = str(resolve_content_root(config.root, config.blog.content_path))
