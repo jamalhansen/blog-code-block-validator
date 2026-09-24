@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from typing import Optional
 import typer
@@ -5,7 +6,7 @@ from typing import Annotated
 from rich.console import Console
 from rich.table import Table
 from rich import box
-from blog_validate.config import load_config
+from blog_validate.config import load_config, resolve_content_root
 from blog_validate.env import setup_environment
 from blog_validate.extractor import scan_posts, build_fixture_registry, scan_helpers_dir
 from blog_validate.languages.base import AnnotationType
@@ -18,6 +19,24 @@ from blog_validate.runner import (
 from blog_validate.inspector import analyze_post, format_guide, _has_assert_statements
 
 app = typer.Typer(help="Validate code blocks in Hugo blog posts.")
+
+ConfigOption = Annotated[
+    Optional[str],
+    typer.Option("--config", help="Path to an alternate blog-validate.toml"),
+]
+
+
+def _load_posts(config_path: str | None):
+    """Load the config (explicit path or walk-up from cwd) and scan its posts."""
+    config = load_config(Path.cwd(), Path(config_path) if config_path else None)
+    all_post_blocks = scan_posts(
+        config.root,
+        config.blog.content_path,
+        config.blog.post_file,
+        config.blog.layout,
+        config.blog.exclude_patterns,
+    )
+    return config, all_post_blocks
 
 
 def _code_preview(code: str, max_lines: int = 3) -> str:
@@ -144,6 +163,9 @@ def check(
         Optional[str],
         typer.Option("--config", help="Path to an alternate blog-validate.toml"),
     ] = None,
+    as_json: Annotated[
+        bool, typer.Option("--json", "-j", help="Emit machine-readable JSON instead of the table")
+    ] = False,
 ) -> None:
     """Validate code blocks in blog posts."""
     if not any([all_posts, changed, post]):
@@ -151,7 +173,7 @@ def check(
         raise typer.Exit(code=1)
 
     config = load_config(Path.cwd(), Path(config_path) if config_path else None)
-    setup_environment(config.root, config.python.dependencies)
+    setup_environment(config.root, config.python.dependencies, config.python.venv)
 
     all_post_blocks = scan_posts(
         config.root,
@@ -183,10 +205,18 @@ def check(
             typer.echo(f"Error: post {post!r} not found", err=True)
             raise typer.Exit(code=1)
 
+    content_root = resolve_content_root(config.root, config.blog.content_path)
+
     if not posts_to_check:
-        typer.echo("No posts to validate.")
+        if as_json:
+            typer.echo(json.dumps(_results_payload([], content_root), indent=2))
+        else:
+            typer.echo("No posts to validate.")
         raise typer.Exit(code=0)
 
+    # Helper/setup warnings from run_post go to stderr in JSON mode so stdout
+    # stays parseable.
+    print_fn = (lambda s: typer.echo(s, err=True)) if as_json else print
     results = [
         run_post(
             p,
@@ -194,16 +224,59 @@ def check(
             base_blocks=base_blocks or None,
             dry_run=dry_run,
             verbose=verbose,
+            print_fn=print_fn,
         )
         for p in posts_to_check
     ]
 
-    any_failed = _print_results(results, verbose)
-    passed = sum(1 for r in results if r.passed)
-    typer.echo(f"\nDone. {passed}/{len(results)} posts passed.")
+    if as_json:
+        typer.echo(json.dumps(_results_payload(results, content_root), indent=2))
+        any_failed = any(not r.passed for r in results)
+    else:
+        any_failed = _print_results(results, verbose)
+        passed = sum(1 for r in results if r.passed)
+        typer.echo(f"\nDone. {passed}/{len(results)} posts passed.")
 
     if any_failed:
         raise typer.Exit(code=1)
+
+
+def _results_payload(results: list[PostResult], content_root: Path) -> dict:
+    """Shape `check` results for --json: one entry per post, every block's status."""
+    return {
+        "content_root": str(content_root),
+        "summary": {
+            "posts": len(results),
+            "posts_passed": sum(1 for r in results if r.passed),
+            "posts_failed": sum(1 for r in results if not r.passed),
+            "blocks_passed": sum(r.passed_count for r in results),
+            "blocks_failed": sum(r.failed_count for r in results),
+            "blocks_skipped": sum(r.skipped_count for r in results),
+        },
+        "posts": [
+            {
+                "slug": pr.slug,
+                "passed": pr.passed,
+                "counts": {
+                    "passed": pr.passed_count,
+                    "failed": pr.failed_count,
+                    "skipped": pr.skipped_count,
+                },
+                "blocks": [
+                    {
+                        "index": r.block.block_index,
+                        "language": r.block.language,
+                        "annotation": r.block.annotation.value,
+                        "status": r.status,
+                        "error": r.error,
+                        "hint": r.hint,
+                    }
+                    for r in pr.results
+                ],
+            }
+            for pr in results
+        ],
+    }
 
 
 @app.command("coverage")
@@ -214,9 +287,16 @@ def coverage(
     show_all: Annotated[
         bool, typer.Option("--all", help="Include posts with no code blocks")
     ] = False,
+    config_path: Annotated[
+        Optional[str],
+        typer.Option("--config", help="Path to an alternate blog-validate.toml"),
+    ] = None,
+    as_json: Annotated[
+        bool, typer.Option("--json", "-j", help="Emit machine-readable JSON instead of the report")
+    ] = False,
 ) -> None:
     """Report annotation coverage across all posts."""
-    config = load_config(Path.cwd())
+    config = load_config(Path.cwd(), Path(config_path) if config_path else None)
     all_post_blocks = scan_posts(
         config.root,
         config.blog.content_path,
@@ -224,17 +304,53 @@ def coverage(
         config.blog.layout,
         config.blog.exclude_patterns,
     )
+    cov = _coverage_summary(all_post_blocks)
 
+    if as_json:
+        cov["content_root"] = str(resolve_content_root(config.root, config.blog.content_path))
+        typer.echo(json.dumps(cov, indent=2))
+        return
+
+    typer.echo("Coverage report")
+    typer.echo("─" * 47)
+    if show_all or cov["no_blocks"] == 0:
+        typer.echo(f"Posts with no code blocks:          {cov['no_blocks']:2}  (skipped — nothing to annotate)")
+    typer.echo(f"Posts with only annotated blocks:   {cov['fully_covered']:2}  (fully covered)")
+    typer.echo(f"Posts with unannotated blocks:      {cov['needs_attention']:2}  (needs attention)")
+
+    if cov["unannotated_posts"]:
+        typer.echo("\nUnannotated posts:")
+        for entry in cov["unannotated_posts"]:
+            noun = "block" if entry["count"] == 1 else "blocks"
+            typer.echo(f"  {entry['slug']:50} {entry['count']} unannotated {noun}")
+
+    if not unannotated_only and cov["skip_counts"]:
+        typer.echo("\nSkipped blocks by reason:")
+        for reason, count in sorted(cov["skip_counts"].items()):
+            typer.echo(f"  {reason:20} {count:2}")
+
+    if not unannotated_only and cov["executed_blocks"]:
+        typer.echo(
+            f"\nAssertion effectiveness: {cov['asserted_blocks']}/{cov['executed_blocks']} "
+            f"executed blocks assert output  ({cov['assertion_pct']}%)"
+        )
+        if cov["unverified_posts"]:
+            typer.echo("Posts with unverified blocks:")
+            for entry in cov["unverified_posts"]:
+                noun = "block" if entry["gap"] == 1 else "blocks"
+                typer.echo(f"  {entry['slug']:50} {entry['gap']} unverified {noun}")
+
+
+def _coverage_summary(all_post_blocks) -> dict:
+    """Annotation coverage and assertion effectiveness, as plain data so the
+    report and --json share one computation."""
     _EXECUTED = {AnnotationType.DEFAULT, AnnotationType.SETUP, AnnotationType.ASSERT}
 
     no_blocks = 0
     fully_covered = 0
     needs_attention = 0
-
-    unannotated_posts = []
+    unannotated_posts: list[dict] = []
     skip_counts: dict[str, int] = {}
-
-    # assertion effectiveness tracking
     post_effectiveness: list[tuple[str, int, int]] = []  # (slug, asserted, executed)
 
     for post in all_post_blocks:
@@ -245,14 +361,13 @@ def coverage(
         unannotated_count = sum(
             1 for b in post.blocks if b.annotation == AnnotationType.DEFAULT
         )
-
         for b in post.blocks:
             if b.annotation != AnnotationType.DEFAULT:
                 skip_counts[b.annotation.value] = skip_counts.get(b.annotation.value, 0) + 1
 
         if unannotated_count > 0:
             needs_attention += 1
-            unannotated_posts.append((post.slug, unannotated_count))
+            unannotated_posts.append({"slug": post.slug, "count": unannotated_count})
         else:
             fully_covered += 1
 
@@ -264,48 +379,30 @@ def coverage(
         if executed:
             post_effectiveness.append((post.slug, asserted, len(executed)))
 
-    typer.echo("Coverage report")
-    typer.echo("─" * 47)
-    if show_all or no_blocks == 0:
-        typer.echo(f"Posts with no code blocks:          {no_blocks:2}  (skipped — nothing to annotate)")
-    typer.echo(f"Posts with only annotated blocks:   {fully_covered:2}  (fully covered)")
-    typer.echo(f"Posts with unannotated blocks:      {needs_attention:2}  (needs attention)")
-
-    if unannotated_posts:
-        typer.echo("\nUnannotated posts:")
-        for slug, count in unannotated_posts:
-            noun = "block" if count == 1 else "blocks"
-            typer.echo(f"  {slug:50} {count} unannotated {noun}")
-
-    if not unannotated_only and skip_counts:
-        typer.echo("\nSkipped blocks by reason:")
-        for reason, count in sorted(skip_counts.items()):
-            typer.echo(f"  {reason:20} {count:2}")
-
-    if not unannotated_only and post_effectiveness:
-        total_asserted = sum(a for _, a, _ in post_effectiveness)
-        total_executed = sum(e for _, _, e in post_effectiveness)
-        pct = int(100 * total_asserted / total_executed) if total_executed else 0
-        typer.echo(f"\nAssertion effectiveness: {total_asserted}/{total_executed} executed blocks assert output  ({pct}%)")
-        unverified = [(s, e - a) for s, a, e in post_effectiveness if a < e]
-        if unverified:
-            typer.echo("Posts with unverified blocks:")
-            for slug, gap in sorted(unverified, key=lambda x: -x[1]):
-                noun = "block" if gap == 1 else "blocks"
-                typer.echo(f"  {slug:50} {gap} unverified {noun}")
+    total_asserted = sum(a for _, a, _ in post_effectiveness)
+    total_executed = sum(e for _, _, e in post_effectiveness)
+    unverified = sorted(
+        ({"slug": s, "gap": e - a} for s, a, e in post_effectiveness if a < e),
+        key=lambda x: -x["gap"],
+    )
+    return {
+        "posts": len(all_post_blocks),
+        "no_blocks": no_blocks,
+        "fully_covered": fully_covered,
+        "needs_attention": needs_attention,
+        "unannotated_posts": unannotated_posts,
+        "skip_counts": skip_counts,
+        "asserted_blocks": total_asserted,
+        "executed_blocks": total_executed,
+        "assertion_pct": int(100 * total_asserted / total_executed) if total_executed else 0,
+        "unverified_posts": unverified,
+    }
 
 
 @app.command("list-fixtures")
-def list_fixtures() -> None:
+def list_fixtures(config_path: ConfigOption = None) -> None:
     """Show all named fixtures and the posts that define and use them."""
-    config = load_config(Path.cwd())
-    all_post_blocks = scan_posts(
-        config.root,
-        config.blog.content_path,
-        config.blog.post_file,
-        config.blog.layout,
-        config.blog.exclude_patterns,
-    )
+    config, all_post_blocks = _load_posts(config_path)
     fixture_registry = build_fixture_registry(all_post_blocks)
 
     if not fixture_registry:
@@ -327,16 +424,9 @@ def list_fixtures() -> None:
 
 
 @app.command("list-posts")
-def list_posts() -> None:
+def list_posts(config_path: ConfigOption = None) -> None:
     """Show all posts with code blocks and their annotation counts."""
-    config = load_config(Path.cwd())
-    all_post_blocks = scan_posts(
-        config.root,
-        config.blog.content_path,
-        config.blog.post_file,
-        config.blog.layout,
-        config.blog.exclude_patterns,
-    )
+    config, all_post_blocks = _load_posts(config_path)
 
     if not all_post_blocks:
         typer.echo("No posts with code blocks found.")
@@ -352,16 +442,9 @@ def list_posts() -> None:
 
 
 @app.command("list-skips")
-def list_skips() -> None:
+def list_skips(config_path: ConfigOption = None) -> None:
     """Show all skipped blocks with a code preview."""
-    config = load_config(Path.cwd())
-    all_post_blocks = scan_posts(
-        config.root,
-        config.blog.content_path,
-        config.blog.post_file,
-        config.blog.layout,
-        config.blog.exclude_patterns,
-    )
+    config, all_post_blocks = _load_posts(config_path)
 
     total = 0
     for post in all_post_blocks:
@@ -383,20 +466,14 @@ def test_guide(
     all_posts: Annotated[
         bool, typer.Option("--all", help="Show guide for all posts with code blocks")
     ] = False,
+    config_path: ConfigOption = None,
 ) -> None:
     """Show a testing checklist for a post without executing any code."""
     if not post and not all_posts:
         typer.echo("Error: specify --post <slug> or --all", err=True)
         raise typer.Exit(code=1)
 
-    config = load_config(Path.cwd())
-    all_post_blocks = scan_posts(
-        config.root,
-        config.blog.content_path,
-        config.blog.post_file,
-        config.blog.layout,
-        config.blog.exclude_patterns,
-    )
+    config, all_post_blocks = _load_posts(config_path)
 
     if all_posts:
         targets = [p for p in all_post_blocks if p.blocks]
@@ -414,16 +491,9 @@ def test_guide(
 
 
 @app.command("stats")
-def stats() -> None:
+def stats(config_path: ConfigOption = None) -> None:
     """Show block count by language across all posts."""
-    config = load_config(Path.cwd())
-    all_post_blocks = scan_posts(
-        config.root,
-        config.blog.content_path,
-        config.blog.post_file,
-        config.blog.layout,
-        config.blog.exclude_patterns,
-    )
+    config, all_post_blocks = _load_posts(config_path)
 
     lang_counts: dict[str, int] = {}
     total_blocks = 0
@@ -464,16 +534,10 @@ def find_language(
     count: Annotated[
         bool, typer.Option("--count/--no-count", "-c", help="Show block count per post")
     ] = True,
+    config_path: ConfigOption = None,
 ) -> None:
     """List posts that contain blocks of a given language."""
-    config = load_config(Path.cwd())
-    all_post_blocks = scan_posts(
-        config.root,
-        config.blog.content_path,
-        config.blog.post_file,
-        config.blog.layout,
-        config.blog.exclude_patterns,
-    )
+    config, all_post_blocks = _load_posts(config_path)
 
     target = language.lower()
     matches: list[tuple[str, int]] = []

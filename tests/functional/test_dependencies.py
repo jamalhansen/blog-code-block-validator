@@ -48,5 +48,30 @@ def test_dependency_warning(tmp_path):
     
     os.chdir(blog_root)
     result = runner.invoke(app, ["check", "--all"])
-    # Typer/CliRunner might capture stdout differently
-    assert "Warning: Missing dependencies declared in blog-validate.toml: nonexistent-module" in result.stdout
+    # The warning goes to stderr (so --json stays clean); result.output has both streams
+    assert "Warning: Missing dependencies declared in blog-validate.toml: nonexistent-module" in result.output
+
+
+def test_venv_from_config_points_outside_the_config_root(tmp_path):
+    """[python] venv lets a config in one place (configs/vault.toml) borrow the
+    site-packages of a project that lives somewhere else (the blog repo)."""
+    v = sys.version_info
+    other_project = tmp_path / "other-project"
+    sp_path = other_project / ".venv" / "lib" / f"python{v.major}.{v.minor}" / "site-packages"
+    sp_path.mkdir(parents=True)
+    (sp_path / "borrowed_module.py").write_text("VERSION = '4.5.6'")
+
+    config_root = tmp_path / "configs"
+    config_root.mkdir()
+    (config_root / "post").mkdir()
+    (config_root / "post" / "index.md").write_text(
+        "```python\nimport borrowed_module\nprint(f'Borrowed: {borrowed_module.VERSION}')\n```\n"
+    )
+    (config_root / "blog-validate.toml").write_text(
+        f"[blog]\ncontent_path='.'\nlayout='bundle'\n[python]\nvenv='{other_project / '.venv'}'\n"
+    )
+
+    os.chdir(config_root)
+    result = runner.invoke(app, ["check", "--all", "--verbose"])
+    assert result.exit_code == 0
+    assert "Borrowed: 4.5.6" in result.stdout

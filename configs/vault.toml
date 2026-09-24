@@ -1,0 +1,19 @@
+# Configuration for validating the vault-side drafts in BrainSync -- the
+# source of truth posts are written in before obsidian-hugo-bridge publishes
+# them. Run via: make validate-vault
+#
+# Helpers and the Python environment are borrowed from the blog repo so a post
+# validates the same way in both places.
+
+[blog]
+content_path = "~/vaults/BrainSync/blog"
+layout = "vault"
+exclude_patterns = ["promo.md"]
+helpers_path = "~/projects/jamalhansen.com/blog-validate-helpers"
+
+[sql]
+backend = "duckdb"
+
+[python]
+venv = "~/projects/jamalhansen.com/.venv"
+dependencies = ["pytest", "ollama", "local-first-common", "pandas", "numpy", "faker"]

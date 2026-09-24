@@ -45,3 +45,13 @@ def test_load_config_valid_layouts(tmp_path):
         (tmp_path / "blog-validate.toml").write_text(f'[blog]\nlayout = "{layout}"\n')
         config = load_config(tmp_path)
         assert config.blog.layout == layout
+
+
+def test_load_config_python_venv_defaults_to_none(tmp_path):
+    (tmp_path / "blog-validate.toml").write_text("")
+    assert load_config(tmp_path).python.venv is None
+
+
+def test_load_config_reads_python_venv(tmp_path):
+    (tmp_path / "blog-validate.toml").write_text('[python]\nvenv = "~/projects/blog/.venv"\n')
+    assert load_config(tmp_path).python.venv == "~/projects/blog/.venv"

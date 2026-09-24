@@ -5,3 +5,7 @@
 [blog]
 content_path = "~/vaults/BrainSync/newsletter/patterns"
 layout = "flat"
+# newsletter-helpers/_ollama_mock.py replaces the `ollama` module before every
+# pattern runs. Without it the patterns' `import ollama` hits the real local
+# server and every assertion against a mock response fails.
+helpers_path = "newsletter-helpers"

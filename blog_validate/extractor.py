@@ -136,6 +136,12 @@ def _consume_fence(
     return i
 
 
+def _is_loose_post_container(directory: Path) -> bool:
+    """A `posts/` dir or a date component (`2026/`, `04/`) holds loose post files
+    directly; any other directory under posts/ is a single post's bundle."""
+    return directory.name == "posts" or directory.name.isdigit()
+
+
 def scan_posts(
     blog_root: Path,
     content_path: str,
@@ -161,31 +167,36 @@ def scan_posts(
             needs = _parse_needs(content)
             results.append(PostBlocks(slug=slug, blocks=blocks, needs=needs))
     elif layout == "vault":
-        # Vault layout: blog/series/[series]/posts/[slug]/[descriptive-name].md
-        # We walk all subdirectories and for each leaf directory, take the first .md
-        for post_dir in sorted(posts_dir.rglob("*")):
-            if not post_dir.is_dir():
+        # Vault layout. A post is any .md under a `posts/` directory, in either
+        # of the two shapes the vault uses (optionally nested under
+        # posts/<YYYY>/<MM>/):
+        #   .../posts/<slug>/<descriptive-name>.md -> bundle: slug = dir name,
+        #                                            first non-excluded .md
+        #   .../posts/<slug>.md                     -> loose: slug = file stem
+        # Anything without a `posts/` ancestor (series index notes, ideas/,
+        # brainstorm/, planning docs) is not a post and must never be executed.
+        for post_dir in sorted({p.parent for p in posts_dir.rglob("*.md")}):
+            rel_parts = post_dir.relative_to(posts_dir).parts
+            if "posts" not in rel_parts and post_dir.name != "posts":
                 continue
 
-            # Check if this directory contains any .md files
-            md_files = sorted(post_dir.glob("*.md"))
+            md_files = [
+                f for f in sorted(post_dir.glob("*.md"))
+                if not any(f.match(p) for p in exclude_patterns)
+            ]
             if not md_files:
                 continue
 
-            # Filter out excluded patterns
-            valid_mds = [
-                f for f in md_files if not any(f.match(p) for p in exclude_patterns)
-            ]
-            if not valid_mds:
-                continue
+            if _is_loose_post_container(post_dir):
+                candidates = [(path, path.stem) for path in md_files]
+            else:
+                candidates = [(md_files[0], post_dir.name)]
 
-            # Take the first one as the post
-            path = valid_mds[0]
-            content = path.read_text()
-            slug = post_dir.name
-            blocks = extract_blocks(content, slug)
-            needs = _parse_needs(content)
-            results.append(PostBlocks(slug=slug, blocks=blocks, needs=needs))
+            for path, slug in candidates:
+                content = path.read_text()
+                blocks = extract_blocks(content, slug)
+                needs = _parse_needs(content)
+                results.append(PostBlocks(slug=slug, blocks=blocks, needs=needs))
     else:
         # Default bundle layout: each post is a directory with a specific post_file
         # We use rglob to find all instances of post_file (e.g. index.md) at any depth
@@ -212,7 +223,7 @@ def scan_helpers_dir(
         base_blocks: files whose names start with '_' — auto-run before every post
         named: all other files, registered by filename stem for opt-in via test:needs
     """
-    helpers_dir = (blog_root / helpers_path).resolve()
+    helpers_dir = resolve_content_root(blog_root, helpers_path).resolve()
     base_blocks: list[CodeBlock] = []
     named: FixtureRegistry = {}
 

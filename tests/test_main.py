@@ -1,3 +1,4 @@
+import json
 import pytest
 from typer.testing import CliRunner
 from blog_validate.main import app, _code_preview
@@ -71,6 +72,36 @@ class TestCheckCommand:
         monkeypatch.chdir(blog_root)
         result = runner.invoke(app, ["check", "--all"])
         assert "Done." in result.output
+
+    def test_json_output_is_parseable_and_summarizes(self, blog_root, monkeypatch):
+        monkeypatch.chdir(blog_root)
+        result = runner.invoke(app, ["check", "--all", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.stdout)
+        assert data["summary"] == {
+            "posts": 1, "posts_passed": 1, "posts_failed": 0,
+            "blocks_passed": 1, "blocks_failed": 0, "blocks_skipped": 0,
+        }
+        assert data["posts"][0]["slug"] == "my-post"
+        assert data["posts"][0]["blocks"][0]["language"] == "sql"
+        assert data["posts"][0]["blocks"][0]["status"] == "passed"
+        assert "Done." not in result.stdout
+
+    def test_json_output_still_exits_1_on_failure(self, tmp_path, monkeypatch):
+        (tmp_path / "blog-validate.toml").write_text(
+            '[blog]\ncontent_path = "content/blog"\npost_file = "index.md"\n'
+        )
+        post_dir = tmp_path / "content" / "blog" / "bad-post"
+        post_dir.mkdir(parents=True)
+        (post_dir / "index.md").write_text("```sql\nSELECT * FROM nonexistent\n```\n")
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["check", "--all", "--json"])
+        assert result.exit_code == 1
+        data = json.loads(result.stdout)
+        assert data["summary"]["posts_failed"] == 1
+        failed_block = data["posts"][0]["blocks"][0]
+        assert failed_block["status"] == "failed"
+        assert "nonexistent" in failed_block["error"]
 
 
 class TestListCommands:

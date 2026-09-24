@@ -8,7 +8,7 @@ def test_skip_annotation_survives_bridge(tmp_path):
     vault_root = tmp_path / "vault"
     vault_root.mkdir()
     (vault_root / "blog-validate.toml").write_text("[blog]\nlayout='vault'\ncontent_path='blog'")
-    post_dir = vault_root / "blog" / "my-post"
+    post_dir = vault_root / "blog" / "posts" / "my-post"
     post_dir.mkdir(parents=True)
     content = "<!-- test:skip -->\n```python\nprint('skip me')\n```"
     (post_dir / "my-post.md").write_text(content)
@@ -34,7 +34,7 @@ def test_expected_failure_survives_bridge(tmp_path):
     vault_root = tmp_path / "vault_ef"
     vault_root.mkdir()
     (vault_root / "blog-validate.toml").write_text("[blog]\nlayout='vault'\ncontent_path='blog'")
-    post_dir = vault_root / "blog" / "ef-post"
+    post_dir = vault_root / "blog" / "posts" / "ef-post"
     post_dir.mkdir(parents=True)
     (post_dir / "ef-post.md").write_text(content)
     

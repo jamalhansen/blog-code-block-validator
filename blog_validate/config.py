@@ -20,6 +20,11 @@ class SqlConfig:
 @dataclass
 class PythonConfig:
     dependencies: list[str] = field(default_factory=list)
+    # Virtualenv whose site-packages the executed blocks may import from.
+    # Defaults to <config root>/.venv; set it when the config lives somewhere
+    # other than the project that owns the dependencies (e.g. configs/vault.toml
+    # validating vault drafts against the blog repo's .venv).
+    venv: str | None = None
 
 
 @dataclass

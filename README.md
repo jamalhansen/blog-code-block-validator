@@ -18,8 +18,21 @@ content_path = "content/blog"
 post_file = "index.md"
 # "bundle" (default) for Hugo leaf bundles (dir/index.md)
 # "flat" for simple markdown files (dir/*.md)
+# "vault" for an Obsidian vault (see below)
 layout = "bundle"
 ```
+
+**Vault layout.** With `layout = "vault"`, a post is any `.md` file under a `posts/` directory, in either shape the vault uses (optionally under `posts/<YYYY>/<MM>/`):
+
+```
+blog/series/<series>/posts/<slug>/<descriptive-name>.md   # bundle: slug = directory name
+blog/series/<series>/posts/<slug>.md                      # loose:  slug = file stem
+blog/posts/2026/04/<slug>/... or <slug>.md                # same two shapes, dated
+```
+
+Notes without a `posts/` ancestor (series index notes, `ideas/`, `brainstorm/`, planning docs) are never treated as posts, so their code is never executed. `exclude_patterns = ["promo.md"]` drops companion files inside a bundle.
+
+This repo validates three targets: the blog (its own `blog-validate.toml` + pre-commit hook), the vault drafts (`configs/vault.toml`) and the newsletter patterns (`configs/newsletter.toml`). `make validate-all` runs all three.
 
 Install the pre-commit hook:
 
@@ -91,13 +104,21 @@ blog-validate find <language>            # posts containing blocks of a given la
 | `--post <slug>` | | Validate a single post by slug |
 | `--verbose` | `-v` | Show per-block pass/fail detail |
 | `--dry-run` | `-n` | Skip execution, report all as skipped |
+| `--json` | `-j` | Emit machine-readable JSON (per post, per block) instead of the table; warnings go to stderr. Exit code is still 1 on failure |
 | `--config <path>` | | Load an alternate `blog-validate.toml` instead of walking up from cwd (e.g. for validating a config outside the current repo) |
+
+`--config` is accepted by every command. `coverage` also takes `--json`.
 
 ```bash
 # Validate a source outside this repo, e.g. newsletter patterns
 blog-validate check --all --config configs/newsletter.toml
 # same thing via the Makefile
 make validate-newsletter
+# all three targets
+make validate-all
+# machine-readable, e.g. for the fleet dashboard snapshot
+blog-validate check --all --json --config configs/vault.toml
+blog-validate coverage --json
 ```
 
 ## Shared Fixtures
@@ -110,11 +131,12 @@ When a fixture post changes, all posts that use its fixtures are automatically i
 
 `blog-validate` supports blog posts that import external Python modules (e.g., `pytest`, `ollama`, `local-first-common`).
 
-1. **Local Virtual Environment**: If a `.venv` directory exists in your blog repo root, `blog-validate` will automatically include its `site-packages` in the Python search path. This allows you to use any modules installed in your project's environment.
-2. **Configuration**: You can declare required dependencies in `blog-validate.toml` to get warnings if they are missing from your environment:
+1. **Local Virtual Environment**: If a `.venv` directory exists in your blog repo root, `blog-validate` will automatically include its `site-packages` in the Python search path. This allows you to use any modules installed in your project's environment. When the config lives somewhere else (e.g. `configs/vault.toml`), point it at the environment to borrow with `venv`.
+2. **Configuration**: You can declare required dependencies in `blog-validate.toml` to get warnings (on stderr) if they are missing from your environment:
 
 ```toml
 [python]
+venv = "~/projects/jamalhansen.com/.venv"   # optional; defaults to <config root>/.venv
 dependencies = ["pytest", "ollama", "local-first-common"]
 ```
 
@@ -135,7 +157,7 @@ dependencies = ["pytest", "ollama", "local-first-common"]
 
 ## Helpers Directory
 
-Add a `blog-validate-helpers/` directory at your blog repo root for reusable setup fixtures. File extension determines language (`.sql` → SQL, `.py` → Python).
+Add a `blog-validate-helpers/` directory at your blog repo root for reusable setup fixtures. File extension determines language (`.sql` → SQL, `.py` → Python). `helpers_path` in `[blog]` overrides the location (relative to the config, absolute, or `~`-prefixed), which is how `configs/vault.toml` reuses the blog's helpers and `configs/newsletter.toml` loads `newsletter-helpers/_ollama_mock.py` so the patterns never hit a real model.
 
 **Named helpers** — opt in per post with a `<!-- test:needs: ... -->` comment after the frontmatter closing `---`:
 
@@ -172,4 +194,9 @@ blog_validate/
 scripts/
 └── hooks/
     └── pre-commit     # Pre-commit hook for your blog repo
+configs/
+├── vault.toml         # BrainSync drafts (layout = "vault"), borrows the blog's helpers + .venv
+├── newsletter.toml    # BrainSync newsletter patterns (layout = "flat")
+└── newsletter-helpers/
+    └── _ollama_mock.py  # auto-run: replaces `ollama` so patterns never call a real model
 ```
