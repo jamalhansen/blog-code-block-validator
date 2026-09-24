@@ -97,6 +97,7 @@ blog-validate test-guide --post <slug>   # testing checklist, no execution
 blog-validate test-guide --all
 blog-validate stats                      # block count by language across all posts
 blog-validate find <language>            # posts containing blocks of a given language
+blog-validate annotation-drift --against configs/vault.toml   # posts whose test annotations differ between two places
 ```
 
 **Flags for `check`:**

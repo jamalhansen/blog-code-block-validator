@@ -430,6 +430,64 @@ def _coverage_summary(all_post_blocks) -> dict:
     }
 
 
+def _annotation_signature(post: PostBlocks) -> list[str]:
+    """What a post's tests look like, independent of its prose: its needs plus
+    each annotated block, in order. Default (unannotated) blocks are left out
+    so an edit to plain code doesn't read as drift."""
+    sig = [f"needs:{name}" + (f":{param}" if param else "") for name, param in post.needs]
+    sig += [
+        f"{b.annotation.value}" + (f":{b.fixture_name}" if b.fixture_name else "")
+        for b in post.blocks
+        if b.annotation != AnnotationType.DEFAULT
+    ]
+    return sig
+
+
+@app.command("annotation-drift")
+def annotation_drift(
+    against: Annotated[
+        str, typer.Option("--against", help="The other blog-validate.toml to compare with (e.g. configs/vault.toml)")
+    ],
+    config_path: ConfigOption = None,
+    as_json: Annotated[bool, typer.Option("--json", "-j", help="Emit machine-readable JSON")] = False,
+) -> None:
+    """Compare test annotations for posts that exist in both places (matched by slug).
+
+    Informational, always exits 0. Drift usually runs both ways (e.g. assertions
+    added to the vault draft after publishing, skips added only to the published
+    copy), so this lists what differs rather than proposing a direction.
+    """
+    _, here = _load_posts(config_path)
+    _, there = _load_posts(against)
+    here_by_slug = {p.slug: p for p in here}
+    there_by_slug = {p.slug: p for p in there}
+    shared = sorted(set(here_by_slug) & set(there_by_slug))
+
+    drifted = []
+    for slug in shared:
+        a, b = _annotation_signature(here_by_slug[slug]), _annotation_signature(there_by_slug[slug])
+        if a != b:
+            drifted.append({
+                "slug": slug,
+                "here": len(a),
+                "there": len(b),
+                "only_here": [x for x in a if x not in b],
+                "only_there": [x for x in b if x not in a],
+            })
+
+    if as_json:
+        typer.echo(json.dumps({"shared_posts": len(shared), "drifted": drifted}, indent=2))
+        return
+
+    typer.echo(f"{len(shared)} posts in both places, {len(drifted)} with different annotations")
+    for d in drifted:
+        typer.echo(f"  {d['slug']:55} here {d['here']:2}  there {d['there']:2}")
+        if d["only_here"]:
+            typer.echo(f"      only here:  {', '.join(d['only_here'])}")
+        if d["only_there"]:
+            typer.echo(f"      only there: {', '.join(d['only_there'])}")
+
+
 @app.command("list-fixtures")
 def list_fixtures(config_path: ConfigOption = None) -> None:
     """Show all named fixtures and the posts that define and use them."""
