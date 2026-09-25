@@ -6,6 +6,8 @@ from blog_validate.languages.base import AnnotationType, CodeBlock
 
 ANNOTATION_RE = re.compile(r'^<!-- test:([\w-]+)(?:\s+name="([^"]+)")?\s*-->$')
 NEEDS_RE = re.compile(r"^<!-- test:needs:\s*([^>]+?)\s*-->$")
+# A check readers never see: <!-- test:check:sql SELECT COUNT(*) = 5 FROM t --> (may span lines)
+CHECK_RE = re.compile(r"^<!--\s*test:check:(sql|python)\b(.*)$", re.DOTALL)
 FixtureRegistry = dict[str, CodeBlock]
 
 _LANG_BY_EXT: dict[str, str] = {".sql": "sql", ".py": "python", ".sh": "bash"}
@@ -81,6 +83,11 @@ def extract_blocks(content: str, slug: str) -> list[CodeBlock]:
     while i < len(lines):
         stripped = lines[i].strip()
 
+        check = CHECK_RE.match(stripped)
+        if check:
+            i = _consume_check(lines, i, check.group(1), slug, blocks)
+            continue
+
         # Check for annotation comment
         result = parse_annotation(stripped)
         if result is not None:
@@ -117,6 +124,35 @@ def extract_blocks(content: str, slug: str) -> list[CodeBlock]:
         i += 1
 
     return blocks
+
+
+def _as_python_check(code: str) -> str:
+    """A bare expression becomes an assert; statements run as written."""
+    try:
+        compile(code, "<check>", "eval")
+    except SyntaxError:
+        return code
+    return f"assert ({code}), {code!r}"
+
+
+def _consume_check(lines: list[str], i: int, lang: str, slug: str, blocks: list[CodeBlock]) -> int:
+    """Consume a hidden <!-- test:check:<lang> ... --> comment (one or more lines) as an assert block."""
+    text = lines[i].strip()
+    while "-->" not in text and i + 1 < len(lines):
+        i += 1
+        text += "\n" + lines[i]
+    body = CHECK_RE.match(text).group(2)
+    code = body[: body.rfind("-->")].strip() if "-->" in body else body.strip()
+    blocks.append(
+        CodeBlock(
+            language=lang,
+            code=_as_python_check(code) if lang == "python" else code,
+            annotation=AnnotationType.ASSERT,
+            post_slug=slug,
+            block_index=len(blocks),
+        )
+    )
+    return i + 1
 
 
 def _consume_fence(

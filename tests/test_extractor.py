@@ -289,3 +289,34 @@ class TestNeedsParsing:
         (post_dir / "index.md").write_text("```sql\nSELECT 1\n```\n")
         posts = scan_posts(tmp_path, "content/blog", "index.md")
         assert posts[0].needs == []
+
+
+class TestHiddenChecks:
+    def test_single_and_multi_line_checks_become_assert_blocks_in_order(self):
+        from blog_validate.extractor import extract_blocks
+        from blog_validate.languages.base import AnnotationType
+
+        content = (
+            "```sql\nSELECT 1\n```\n"
+            "<!-- test:check:sql SELECT COUNT(*) = 5 FROM customers -->\n"
+            "Prose.\n"
+            "<!-- test:check:python\nlen(customers) == 5\n-->\n"
+            "<!-- test:check:python x = 1\nassert x == 1 -->\n"
+        )
+        blocks = extract_blocks(content, "p")
+        assert [b.annotation for b in blocks] == [AnnotationType.DEFAULT] + [AnnotationType.ASSERT] * 3
+        assert blocks[1].language == "sql" and blocks[1].code == "SELECT COUNT(*) = 5 FROM customers"
+        assert blocks[2].code == "assert (len(customers) == 5), 'len(customers) == 5'"
+        assert blocks[3].code == "x = 1\nassert x == 1"
+
+    def test_hidden_checks_run(self, tmp_path):
+        from blog_validate.extractor import PostBlocks, extract_blocks
+        from blog_validate.runner import run_post
+
+        content = (
+            "```sql\nCREATE TABLE t AS SELECT * FROM range(3)\n```\n"
+            "<!-- test:check:sql SELECT COUNT(*) = 3 FROM t -->\n"
+            "<!-- test:check:sql SELECT COUNT(*) = 4 FROM t -->\n"
+        )
+        result = run_post(PostBlocks("p", extract_blocks(content, "p")), {}, print_fn=lambda s: None)
+        assert [r.status for r in result.results] == ["passed", "passed", "failed"]

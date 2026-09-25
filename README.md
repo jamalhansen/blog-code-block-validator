@@ -72,6 +72,23 @@ edits, dependency upgrades and silently different results without adding visible
   never compared. `EXPLAIN` output (timings, version-specific plans) is never snapshotted.
 - To accept an intended change: `blog-validate snapshot --post <slug>`.
 
+## Hidden checks
+
+A check readers never see, for claims the prose makes about a result:
+
+```markdown
+<!-- test:check:sql SELECT COUNT(*) = 5 FROM customers -->
+<!-- test:check:python len(active_customers) == 3 -->
+<!-- test:check:python
+rows = conn.execute("SELECT city FROM customers").fetchall()
+assert ("Boston",) in rows
+-->
+```
+
+It runs in document order with the post's other blocks, like `test:assert`, but it's an HTML
+comment, so Hugo doesn't render it. A SQL check must return a single truthy value; a Python check
+that is a bare expression is asserted, and statements run as written.
+
 ## Semantic Markers for Cleanup
 
 To keep patterns clean for publishing, you can use semantic markers for multi-line test blocks:
