@@ -30,6 +30,7 @@ class ExecutionContext:
     conn: Any  # duckdb.DuckDBPyConnection
     py_globals: dict = field(default_factory=dict)
     last_stdout: str | None = None  # set by validators that capture stdout (e.g. python)
+    last_result: dict | None = None  # output fingerprint of the last block, for snapshots
     bash_execute: bool = True  # False = bash blocks are syntax-checked only ([bash] execute)
 
 

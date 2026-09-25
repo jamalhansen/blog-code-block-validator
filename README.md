@@ -59,6 +59,19 @@ Place these HTML comments on the line immediately before a code fence:
 | `<!-- test:fixture name="..." -->` | Define a named shared fixture |
 | `<!-- test:use name="..." -->` | Inject a named fixture |
 
+## Snapshots
+
+Most blocks only prove "it runs". `blog-validate snapshot --all` (or `--post <slug>`) records what
+each passing block produced -- a query's columns, row count and an order-insensitive digest of its
+rows; a Python block's stdout -- in `<config stem>.snapshots.json` next to the config. From then on,
+`check` fails a block whose output changes ("row count changed: 5 -> 6"), which catches helper-data
+edits, dependency upgrades and silently different results without adding visible assertions to posts.
+
+- Blocks are keyed by a hash of their code, so editing a block retires its snapshot; re-record after.
+- Recording runs each post three times; output that differs between runs is stored as unstable and
+  never compared. `EXPLAIN` output (timings, version-specific plans) is never snapshotted.
+- To accept an intended change: `blog-validate snapshot --post <slug>`.
+
 ## Semantic Markers for Cleanup
 
 To keep patterns clean for publishing, you can use semantic markers for multi-line test blocks:

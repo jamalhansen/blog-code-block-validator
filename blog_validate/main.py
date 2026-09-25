@@ -6,6 +6,7 @@ from typing import Annotated
 from rich.console import Console
 from rich.table import Table
 from rich import box
+from blog_validate import snapshots
 from blog_validate.config import load_config, resolve_content_root
 from blog_validate.env import setup_environment
 from blog_validate.extractor import PostBlocks, scan_posts, build_fixture_registry, scan_helpers_dir
@@ -235,11 +236,16 @@ def check(
         for p in posts_to_check
     ]
 
+    recorded = snapshots.load(config.snapshot_path) if config.snapshot_path and not dry_run else {}
+    compared = sum(snapshots.apply(r, recorded.get(r.slug, {})) for r in results)
+
     if as_json:
         typer.echo(json.dumps(_results_payload(results, content_root, skipped_by_status), indent=2))
         any_failed = any(not r.passed for r in results)
     else:
         any_failed = _print_results(results, verbose)
+        if compared:
+            typer.echo(f"{compared} block outputs compared against snapshots.")
         passed = sum(1 for r in results if r.passed)
         typer.echo(f"\nDone. {passed}/{len(results)} posts passed.")
         if skipped_by_status:
@@ -247,6 +253,58 @@ def check(
 
     if any_failed:
         raise typer.Exit(code=1)
+
+
+@app.command("snapshot")
+def snapshot(
+    all_posts: Annotated[bool, typer.Option("--all", help="Record every post")] = False,
+    post: Annotated[Optional[str], typer.Option("--post", help="Record a single post by slug")] = None,
+    config_path: Annotated[
+        Optional[str], typer.Option("--config", help="Path to an alternate blog-validate.toml")
+    ] = None,
+) -> None:
+    """Record what each block outputs now; `check` then fails blocks whose output changes.
+
+    Each post runs three times: blocks whose output differs between runs are stored as unstable
+    and never compared. Only passing blocks are recorded.
+    """
+    if not (all_posts or post):
+        typer.echo("Error: specify --all or --post <slug>", err=True)
+        raise typer.Exit(code=1)
+    config = load_config(Path.cwd(), Path(config_path) if config_path else None)
+    setup_environment(config.root, config.python.dependencies, config.python.venv)
+    all_post_blocks = scan_posts(
+        config.root, config.blog.content_path, config.blog.post_file,
+        config.blog.layout, config.blog.exclude_patterns,
+    )
+    base_blocks, helper_fixtures = scan_helpers_dir(config.root, config.blog.helpers_path)
+    fixture_registry = {**helper_fixtures, **build_fixture_registry(all_post_blocks)}
+    if post:
+        targets = [p for p in all_post_blocks if p.slug == post]
+        if not targets:
+            typer.echo(f"Error: post {post!r} not found", err=True)
+            raise typer.Exit(code=1)
+    else:
+        targets, _ = _split_by_status(all_post_blocks, config.blog.skip_statuses)
+
+    stored = snapshots.load(config.snapshot_path)
+    totals = {"stable": 0, "unstable": 0}
+    quiet = lambda s: None  # noqa: E731 - helper warnings were already shown by check
+    for p in targets:
+        runs = [
+            run_post(p, fixture_registry, base_blocks=base_blocks or None, print_fn=quiet,
+                     bash_execute=config.bash.execute)
+            for _ in range(snapshots.RUNS)
+        ]
+        entries = snapshots.record(*runs)
+        stored[p.slug] = entries
+        totals["unstable"] += sum(1 for v in entries.values() if v.get("unstable"))
+        totals["stable"] += sum(1 for v in entries.values() if not v.get("unstable"))
+    snapshots.save(config.snapshot_path, stored)
+    typer.echo(
+        f"Recorded {totals['stable']} block outputs from {len(targets)} posts "
+        f"({totals['unstable']} unstable, not compared) -> {config.snapshot_path}"
+    )
 
 
 def _split_by_status(posts: list[PostBlocks], skip_statuses: list[str]) -> tuple[list[PostBlocks], list[PostBlocks]]:

@@ -25,6 +25,7 @@ class BlockResult:
     detail: str | None = None  # assertion left/right values
     hint: str | None = None   # actionable fix suggestion
     stdout: str | None = None  # captured stdout from exec
+    fingerprint: dict | None = None  # what the block produced (see languages.*.last_result)
 
 
 def _make_hint(error: str, code: str, prev_block_failed: bool) -> str | None:
@@ -98,6 +99,7 @@ def _run_block(
 
     annotation = block.annotation
     ctx.last_stdout = None
+    ctx.last_result = None
 
     if annotation == AnnotationType.SKIP:
         return BlockResult(block=block, status="skipped")
@@ -164,14 +166,14 @@ def _run_block(
         else:
             try:
                 validator.execute(block.code, ctx)
-                return BlockResult(block=block, status="passed", stdout=ctx.last_stdout)
+                return BlockResult(block=block, status="passed", stdout=ctx.last_stdout, fingerprint=ctx.last_result)
             except ValidationError as e:
                 return _failed(block, e, prev_block_failed)
 
     # DEFAULT and SETUP: execute, fail on any error
     try:
         validator.execute(block.code, ctx)
-        return BlockResult(block=block, status="passed", stdout=ctx.last_stdout)
+        return BlockResult(block=block, status="passed", stdout=ctx.last_stdout, fingerprint=ctx.last_result)
     except ValidationError as e:
         return _failed(block, e, prev_block_failed)
 

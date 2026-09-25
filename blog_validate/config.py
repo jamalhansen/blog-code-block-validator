@@ -46,6 +46,7 @@ class Config:
     python: PythonConfig
     root: Path
     bash: BashConfig = field(default_factory=BashConfig)
+    snapshot_path: Path | None = None  # <config stem>.snapshots.json, next to the config
 
 
 def resolve_content_root(blog_root: Path, content_path: str) -> Path:
@@ -63,6 +64,7 @@ def _build_config(toml_path: Path, root: Path) -> Config:
         python=PythonConfig(**data.get("python", {})),
         root=root,
         bash=BashConfig(**data.get("bash", {})),
+        snapshot_path=toml_path.with_name(f"{toml_path.stem}.snapshots.json"),
     )
     valid_layouts = {"bundle", "flat", "vault"}
     if config.blog.layout not in valid_layouts:

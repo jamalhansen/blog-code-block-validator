@@ -1,4 +1,5 @@
 import ast
+import hashlib
 import io
 import contextlib
 from blog_validate.languages.base import ExecutionContext, ValidationError, Validator
@@ -44,6 +45,11 @@ class PythonValidator(Validator):
             try:
                 exec(compile(code, "<blog>", "exec"), context.py_globals)
                 context.last_stdout = stdout_buf.getvalue() or None
+                if context.last_stdout:
+                    context.last_result = {
+                        "stdout": context.last_stdout[:200],
+                        "digest": hashlib.sha256(context.last_stdout.encode()).hexdigest()[:16],
+                    }
             except AssertionError as e:
                 detail = _introspect_assertion(code, context.py_globals)
                 stdout = stdout_buf.getvalue()
